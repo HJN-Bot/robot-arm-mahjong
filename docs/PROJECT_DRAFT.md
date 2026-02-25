@@ -7,7 +7,13 @@
 ## 0. 项目定位（给投资人/评委的 30 秒）
 **我们在验证“定制化传感器 + 执行器”的时代：Agent 不止在屏幕里对话，而是能在物理世界执行。**
 
-机械臂麻将是一个 OpenClaw 硬件输出 Demo：摄像头识别桌面麻将状态，OpenClaw 进行场景编排与语音交互，机械臂执行抓牌/看牌/扔牌/点头/摇头/点三点等动作。
+机械臂麻将是一个 **OpenClaw 硬件输出 Demo**：摄像头识别桌面麻将状态，OpenClaw 作为 Brain 进行场景编排与语音交互（“有灵魂”），机械臂作为执行器完成抓牌/看牌/扔牌/点头/摇头/点三点等动作。
+
+### 特别之处：OpenClaw 作为 Brain 层“有灵魂”
+- **人格/抽象/捣蛋**：台词库 + 动作节奏（停顿、回收、点三点）让它像“在思考/在挑衅”。
+- **记忆偏好**：记住你喜欢的台词风格、动作风格、安全等级（礼貌/梗）。
+- **主动学习（Cron）**：定时收集桌游/麻将梗/小技巧 → 总结成卡片 → 下次演示自动用上。
+- **可验证的自主**：Brain 生成“计划与参数”，执行层有安全 guard + dry-run + 必要的人类确认。
 
 **核心卖点**：本地低延迟、可复现、可扩展到任意桌面操作场景（分拣/装配/展览互动/零售导购）。
 
@@ -44,30 +50,35 @@
 
 ## 2. 系统架构（可实现路径）
 
-### 2.1 模块拆分
-- `vision/`：桌面标定 + 目标检测/定位（先 position，后识别牌面）
-- `arm/`：动作库（grasp/look/throw/tap3/nod/shake）+ 安全限位
-- `orchestrator/`：状态机（scene1-4）、错误重试、日志
-- `openclaw-skill/`：Discord/命令入口、调用 orchestrator、返回 status
-- `tts/`：语音输出（先固定几句，后再做可配置）
+> 关键思想：**OpenClaw=Brain（灵魂/记忆/编排）**；机械臂=执行器；摄像头=传感器。
+>
+> 更详细架构图与协议见：`docs/ARCHITECTURE.md`
 
-### 2.2 接口协议（建议）
-- Vision 输出：
+### 2.1 模块拆分
+- `openclaw-skill/`：Discord/命令入口（Brain 的“嘴”）→ 调用 orchestrator，返回 status
+- `orchestrator/`：状态机（scene1-4）、安全 guard（限速/限位/急停）、错误重试、日志
+- `vision/`：桌面标定 + 目标检测/定位（先 position，后识别牌面）
+- `arm_adapter/`：对接 SOMA 机械臂 SDK（Python/ROS/HTTP 任一）→ 暴露统一动作 API
+- `tts/`：语音输出（先固定几句，后做可配置台词库/人格）
+
+### 2.2 接口协议（建议 v0）
+- Vision 输出（给 orchestrator）：
   - `table_frame`: 标定后的桌面坐标系
   - `target_pose`: 目标牌/目标区域 (x,y,theta)
   - `confidence`: 0-1
-- Arm 动作 API：
-  - `arm.home()`
-  - `arm.grasp(pose)` / `arm.push(pose)`（保底）
-  - `arm.look_pose()`（回收姿态）
-  - `arm.place(pose)`
-  - `arm.tap(times=3)`
-  - `arm.nod()` / `arm.shake()`
-  - `arm.estop()`
-- OpenClaw 指令：
+
+- Arm Adapter API（给 orchestrator，不随厂商 SDK 变化）：
+  - `home()` / `estop()` / `status()`
+  - `grasp(pose)` / `push(pose)`（抓不稳时保底）
+  - `look_pose()`（看牌回收姿态）
+  - `place(pose)`（弃牌区固定 pose）
+  - `tap(times=3)` / `nod()` / `shake()`
+
+- OpenClaw 指令（Discord 侧）：
   - `/scene 1|2|3|4`
   - `/status`
-  - `/safe`（切换“礼貌台词/保守动作”）
+  - `/safe`（礼貌台词/保守动作）
+  - `/style polite|meme`（台词风格，可选）
 
 ---
 

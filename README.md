@@ -42,4 +42,7 @@
 - Day 1：硬件打通 + 视觉识别最小闭环 + 机械臂动作库 v0 + Scene1 端到端通
 - Day 2：加入 Scene2/3/4 + OpenClaw skill/Discord 体验 + 调参稳定性 + Demo 视频 + Presentation
 
-更详细见：`docs/PROJECT_DRAFT.md`
+更详细见：
+- `docs/PROJECT_DRAFT.md`
+- `docs/ARCHITECTURE.md`（架构图 + 协议 + Brain“有灵魂”的落地方式）
+- `docs/REQUIREMENTS.md`（需求 + 多层最小成功）
