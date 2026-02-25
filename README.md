@@ -43,6 +43,9 @@
 - Day 2：加入 Scene2/3/4 + OpenClaw skill/Discord 体验 + 调参稳定性 + Demo 视频 + Presentation
 
 更详细见：
-- `docs/PROJECT_DRAFT.md`
-- `docs/ARCHITECTURE.md`（架构图 + 协议 + Brain“有灵魂”的落地方式）
+- `docs/PROJECT_DRAFT.md`（两日工期 + 最大成功）
+- `docs/ARCHITECTURE.md`（技术架构图 + 协议 + Brain“有灵魂”的落地方式）
 - `docs/REQUIREMENTS.md`（需求 + 多层最小成功）
+- `docs/SCENES_BRAINSTORM.md`（脑爆场景拓展）
+- `docs/NETWORKING.md`（Tailscale：EC2 ↔ Mac）
+- `docs/HARDWARE_CHECKLIST.md`（硬件/线材/桌面布置清单）
