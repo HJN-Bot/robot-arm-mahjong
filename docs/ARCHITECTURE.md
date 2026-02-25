@@ -104,7 +104,7 @@ flowchart TB
 ### 3.2 Arm Adapter API（给 orchestrator）
 - `home()`
 - `estop()`
-- `grasp(pose)` / `push(pose)`（抓不稳时保底）
+- `grasp(pose)`（本项目要求抓取成功；不以 push 作为保底）
 - `look_pose()`（“看牌”回收姿态）
 - `place(pose)`（弃牌区固定 pose）
 - `tap(times=3)` / `nod()` / `shake()`
