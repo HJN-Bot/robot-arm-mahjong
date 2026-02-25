@@ -30,7 +30,9 @@
 - MVP 阶段允许降级：手动点击画面取点 / 固定弃牌区坐标
 
 ### L4 Actuation（Arm）
-- SOMA 机械臂动作库：`home / grasp / look_pose / place / tap3 / nod / shake / estop`
+- SOMA（SO-ARM100 系列）机械臂动作库：`home / grasp / look_pose / place / tap3 / nod / shake / estop`
+- 控制接口（已初步确认）：**UART → 总线伺服（STS3215）**
+- 推荐：用 **LeRobot 的 Python 接口**做 Arm Adapter（避免我们自己直接撸 UART 指令集）
 - 末端执行器（夹爪）与抓取稳定性
 
 ---
