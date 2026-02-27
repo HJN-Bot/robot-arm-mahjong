@@ -10,13 +10,13 @@
 - `#mahjong-brain`（或你命名的频道）
 
 ### 1.2 需要填写的值
-- Discord **Guild ID**：`__________`
-- Discord **Channel ID**（mahjong-brain）：`__________`
-- 是否 requireMention：`true/false`（建议 Hackathon 期间 false）
+- Discord **Guild ID**：`1467170598529794317` ✅
+- Discord **Channel ID**（mahjong-brain）：`1476944737931100221` ✅
+- 是否 requireMention：`false`（Hackathon 期间直接响应）
 
-### 1.3 OpenClaw 绑定策略（二选一）
-- 方案 A：复用现有 agent（andrew/rex 等）+ 新 channel binding
-- 方案 B：新建 agentId：`mahjong`（推荐，隔离记忆与提示词）
+### 1.3 OpenClaw 绑定策略 ✅ 已确认
+- ~~方案 A：复用现有 agent~~
+- **方案 B：新建 agentId `mahjong`**（隔离记忆与提示词，已选定）
 
 ### 1.4 Skill 指令协议（Brain 侧）
 - `/mj scene A|B`
@@ -49,10 +49,8 @@
 
 ## 3) 机械臂团队接口（Arm Adapter）
 
-### 3.1 接口形态（必须确认）
-- [ ] HTTP
-- [ ] ROS/ROS2
-- [ ] 其他：__________
+### 3.1 接口形态 ✅ 已确认
+- [x] **HTTP**（明天拿 URL）
 
 ### 3.2 若是 HTTP（推荐），至少提供这些 endpoint（建议）
 - `POST /pick_tile`
@@ -64,30 +62,56 @@
 - `GET  /status`
 
 需要填写：
-- `ARM_HTTP_BASE_URL = http://<arm-host>:<port>`
+- `ARM_HTTP_BASE_URL = http://<arm-host>:<port>`（明天确认）
 
 > 如果对方不是 HTTP：请他们在同 WiFi 内包一层 HTTP 给你们（最省对接成本）。
 
 ---
 
-## 4) Vision（电脑前摄像头最小识别）
+## 4) Vision（两阶段：Marker 定位 + 正面花色识别）✅ 方案已确认
 
-目标：明天只做最小分类（甚至只认两张牌）
-- A（扔出去）= 白板（white_dragon）
-- B（拿回来）= 一饼（one_dot）
+### 4.1 两阶段说明
+```
+阶段 1 — 抓取定位（marker 在牌背面）
+  牌面朝下放桌上 → 背面朝上 → marker 朝摄像头
+  OpenCV ArUco 检测 → 输出 target_pose (x, y, theta)
+  → 机械臂知道去哪里抓
 
-需要填写：
-- 摄像头来源：
-  - [ ] 电脑自带摄像头
-  - [ ] 外接 USB 摄像头
-- Mac 摄像头 index：`CAMERA_INDEX=0/1/...`
-- 识别策略：
-  - [ ] 单帧
-  - [ ] 多帧取最大置信度（建议 5-10 帧）
+阶段 2 — 花色识别（正面朝摄像头）
+  机械臂抓起后 present_to_camera
+  牌正面（花色/图案）朝摄像头
+  图像识别 → 输出 label（white_dragon / one_dot / ...）
+```
 
-输出契约（orchestrator 需要）：
+### 4.2 摄像头 ✅ 已确认
+- [x] **电脑自带摄像头**（Mac 内置）
+- `CAMERA_INDEX = 0`
+
+### 4.3 阶段 1：Marker 定位（背面）
+- 推荐：**ArUco marker**（OpenCV 原生，无额外依赖）
+  - 打印后贴在牌背面
+  - marker 只需要传递位置，不需要区分牌种（ID 可以全部用同一个）
+- 输出：`target_pose = (x, y, theta)`
+
+待确认：
+- [ ] marker 类型：ArUco / AprilTag / 二维码？（建议 ArUco）
+- [ ] 是否明天打印并贴好？
+
+### 4.4 阶段 2：正面花色识别
+- 输入：机械臂举牌后拍一帧正面图像
+- 识别方案（按稳定性排序，Hackathon 选其一）：
+  - **方案 A（最快）**：调用 Claude Vision API / GPT-4V，发图直接问"这是什么麻将牌"
+  - **方案 B（本地）**：OpenCV 颜色/形状模板匹配（白板=空白多，一饼=一个圆）
+  - **方案 C（备选）**：简单 CNN，需要提前准备训练数据
+- 待确认：选哪个方案？（建议先试方案 A，速度快且准）
+
+### 4.5 输出契约（orchestrator 需要，不变）
 - `label`：`white_dragon | one_dot`
 - `confidence`：0-1
+
+### 4.6 防抖策略
+- 连续 3 帧一致才输出最终结果
+- 单帧超时 2s → confidence=0，orchestrator 记录失败
 
 ---
 
@@ -119,9 +143,12 @@
 
 ## 7) 桌面布置（抓取成功率的核心输入）
 
-必须明确：
-- 牌的“标准摆放姿态”：位置、朝向、间距
-- 相机与牌的相对位置：固定距离、固定角度
-- 光照：避免强反光
+✅ 已确认：
+- 牌面贴 marker，摆放位置相对灵活（marker 提供位置信息）
+- 摄像头：Mac 内置摄像头固定俯拍/侧拍桌面
 
-> 本项目不接受“抓取失败就推/拨”保底：抓取必须稳定。
+仍需现场确认：
+- 相机安装高度与角度（marker 检测需保证 marker 正面朝摄像头）
+- 光照：避免 marker 表面反光（哑光打印 / 遮光）
+
+> 本项目不接受”抓取失败就推/拨”保底：抓取必须稳定。
