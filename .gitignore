@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+dist/
+build/
+
+# macOS
+.DS_Store
+.AppleDouble
+
+# TTS assets (large wav files)
+software/adapters/tts/assets/**/*.wav
+
+# Secrets
+.env
+*.env
+
+# Editor
+.idea/
+.vscode/
+*.swp

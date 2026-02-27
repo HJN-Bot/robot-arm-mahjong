@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <title>Robot Arm Mahjong</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-title">🀄 Robot Arm Mahjong</div>
+  <div class="topbar-status">
+    <span class="dot" id="dot"></span>
+    <span id="status-label">连接中...</span>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- LEFT: Character avatar panel -->
+  <aside class="panel-avatar">
+    <div class="avatar-frame" id="avatar-frame">
+      <img id="avatar-img" src="/static/avatar.png" onerror="this.style.display='none'" alt="" />
+      <div class="avatar-emoji" id="avatar-emoji">🤖</div>
+      <div class="avatar-state-badge" id="avatar-state">待机</div>
+    </div>
+
+    <div class="speech-bubble" id="speech-bubble">
+      <span id="speech-text">等待指令...</span>
+    </div>
+
+    <div class="recognized-card" id="recognized-card">
+      <div class="rec-label">最近识别</div>
+      <div class="rec-tile" id="rec-tile">—</div>
+      <div class="rec-conf" id="rec-conf"></div>
+    </div>
+
+    <div class="stats-mini">
+      <div class="stat-item">
+        <div class="stat-num" id="stat-total">0</div>
+        <div class="stat-lbl">总局数</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num" id="stat-success">—</div>
+        <div class="stat-lbl">成功率</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num" id="stat-avg">—</div>
+        <div class="stat-lbl">均耗时</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- RIGHT: Dashboard -->
+  <main class="panel-dashboard">
+
+    <section class="section">
+      <h2 class="section-title">🎯 技能 Skills</h2>
+      <div class="skill-grid">
+        <div class="skill-card" id="skill-a" onclick="runScene('A')">
+          <div class="skill-icon">🃏</div>
+          <div class="skill-name">Scene A</div>
+          <div class="skill-desc">抓牌 → 验牌 → 扔出</div>
+        </div>
+        <div class="skill-card" id="skill-b" onclick="runScene('B')">
+          <div class="skill-icon">↩️</div>
+          <div class="skill-name">Scene B</div>
+          <div class="skill-desc">抓牌 → 验牌 → 退回</div>
+        </div>
+        <div class="skill-card skill-extra" onclick="runExtra('tap')">
+          <div class="skill-icon">👆</div>
+          <div class="skill-name">点三点</div>
+          <div class="skill-desc">末端执行器</div>
+        </div>
+        <div class="skill-card skill-extra" onclick="runExtra('nod')">
+          <div class="skill-icon">✅</div>
+          <div class="skill-name">点头</div>
+          <div class="skill-desc">牌没问题</div>
+        </div>
+        <div class="skill-card skill-extra" onclick="runExtra('shake')">
+          <div class="skill-icon">❌</div>
+          <div class="skill-name">摇头</div>
+          <div class="skill-desc">还得练啊</div>
+        </div>
+        <div class="skill-card skill-home" onclick="post('/home', {})">
+          <div class="skill-icon">🏠</div>
+          <div class="skill-name">回零位</div>
+          <div class="skill-desc">Home position</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section--inline">
+      <h2 class="section-title">⚙️ 参数</h2>
+      <div class="settings-row">
+        <label class="setting-label">
+          台词风格
+          <select id="style">
+            <option value="polite">礼貌 polite</option>
+            <option value="meme">梗 meme</option>
+          </select>
+        </label>
+        <label class="setting-label">
+          安全模式
+          <select id="safe">
+            <option value="true">开 Safe</option>
+            <option value="false">关 Fast</option>
+          </select>
+        </label>
+        <button class="btn btn--danger" onclick="post('/estop', {})">🚨 ESTOP</button>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">📋 对局记录</h2>
+      <div class="history-wrap">
+        <table class="history-table">
+          <thead>
+            <tr>
+              <th>#</th><th>场景</th><th>结果</th><th>识别牌</th><th>耗时</th><th>风格</th>
+            </tr>
+          </thead>
+          <tbody id="history-body">
+            <tr><td colspan="6" class="empty-row">暂无记录</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">🖥 日志</h2>
+      <pre id="logs">—</pre>
+    </section>
+
+  </main>
+</div>
+
+<script src="/static/main.js"></script>
+</body>
+</html>
