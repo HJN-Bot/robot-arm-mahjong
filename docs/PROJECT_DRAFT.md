@@ -144,7 +144,7 @@
 
 ## 4. 分工（按角色/交付物）
 
-### PM/PO（Jianan）
+### Jianan
 - OpenClaw 部署与运行环境
 - Skill 编写（Discord 指令 → 场景编排）
 - 场景设计（台词、节奏、观众体验）
