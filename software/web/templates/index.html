@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Robot Arm Mahjong - Control Panel</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <h1>Robot Arm Mahjong - Control Panel</h1>
+
+  <section class="card">
+    <div>
+      <button onclick="runScene('A')">Run Scene A (throw)</button>
+      <button onclick="runScene('B')">Run Scene B (return)</button>
+      <button onclick="post('/estop')">ESTOP</button>
+    </div>
+    <div style="margin-top:10px;">
+      Style:
+      <select id="style">
+        <option value="polite">polite</option>
+        <option value="meme">meme</option>
+      </select>
+      Safe:
+      <select id="safe">
+        <option value="true">true</option>
+        <option value="false">false</option>
+      </select>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Status</h2>
+    <pre id="status">loading...</pre>
+  </section>
+
+  <section class="card">
+    <h2>Logs</h2>
+    <pre id="logs"></pre>
+  </section>
+
+<script src="/static/main.js"></script>
+</body>
+</html>

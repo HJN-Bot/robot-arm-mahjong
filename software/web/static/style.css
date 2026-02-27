@@ -1,0 +1,4 @@
+body { font-family: -apple-system, system-ui, sans-serif; margin: 16px; }
+.card { border: 1px solid #ddd; padding: 12px; border-radius: 8px; margin: 12px 0; }
+button { margin-right: 8px; }
+pre { background: #111; color: #0f0; padding: 10px; border-radius: 6px; overflow-x: auto; }
