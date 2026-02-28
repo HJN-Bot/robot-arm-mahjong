@@ -39,3 +39,21 @@ class VoiceTriggerResponse(BaseModel):
     ok: bool
     action: Optional[str] = None
     reply: str
+
+# Brain callbacks (OpenClaw EC2 → Mac)
+class BrainInputRequest(BaseModel):
+    session_id: str
+    label: str
+    confidence: float
+    frame_id: Optional[str] = None
+
+class BrainDecisionRequest(BaseModel):
+    session_id: str
+    action: Literal["throw", "return"]
+    line_key: str          # e.g. "LOOK_DONE", "I_WANT_CHECK"
+    ui_text: str           # display text for Web UI
+    sfx: Optional[str] = None
+
+class SessionStartResponse(BaseModel):
+    session_id: str
+    ok: bool

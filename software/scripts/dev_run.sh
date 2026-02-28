@@ -9,5 +9,5 @@ if [ ! -d .venv ]; then
   .venv/bin/pip install -r requirements.txt
 fi
 
-echo "Starting server at http://localhost:8000"
-.venv/bin/uvicorn software.web.app:app --reload --port 8000
+echo "Starting server at http://0.0.0.0:8000  (local: http://localhost:8000)"
+.venv/bin/uvicorn software.web.app:app --host 0.0.0.0 --reload --port 8000

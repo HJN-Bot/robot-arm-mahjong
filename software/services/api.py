@@ -1,10 +1,12 @@
 import base64
 import re
+import uuid
 from fastapi import FastAPI
 from software.services.models import (
     RunSceneRequest, RunSceneResponse, StatusResponse, RecognizeOut,
     CaptureFrameRequest, CaptureFrameResponse,
     VoiceTriggerRequest, VoiceTriggerResponse,
+    BrainInputRequest, BrainDecisionRequest, SessionStartResponse,
 )
 from software.services.status_store import StatusStore
 from software.orchestrator.contracts import RunRequest
@@ -145,3 +147,46 @@ def voice_trigger(req: VoiceTriggerRequest):
             return VoiceTriggerResponse(ok=True, action=action, reply=reply)
 
     return VoiceTriggerResponse(ok=True, action=None, reply="听到了，但不确定要做什么 🤔")
+
+
+# ===== Brain Callbacks (OpenClaw EC2 → Mac) =====
+
+@app.post("/session/start", response_model=SessionStartResponse)
+def session_start():
+    """Brain 发起新对局，Mac 返回 session_id。"""
+    sid = str(uuid.uuid4())[:8]
+    status.log(f"SESSION_START: {sid}")
+    return SessionStartResponse(session_id=sid, ok=True)
+
+
+@app.post("/brain/input")
+def brain_input(req: BrainInputRequest):
+    """Brain 把 Mac 的识别结果接收回去（供 Brain 记忆/决策）。
+
+    实际上 Mac 在 capture_frame 里已经识别，这个端点给 Brain 推送确认。
+    Brain 拿到后自己决策，再通过 /brain/decision 回调 Mac。
+    """
+    status.log(f"BRAIN_INPUT: session={req.session_id} label={req.label} conf={req.confidence:.2f}")
+    return {"ok": True, "session_id": req.session_id}
+
+
+@app.post("/brain/decision")
+def brain_decision(req: BrainDecisionRequest):
+    """Brain 的决策结果推回 Mac，Mac 执行动作 + TTS。"""
+    status.log(f"BRAIN_DECISION: session={req.session_id} action={req.action} line={req.line_key}")
+
+    scene = "A" if req.action == "throw" else "B"
+    rr = orch.run_scene(RunRequest(scene=scene, style="polite", safe=True))
+
+    # TTS：播放 line_key 对应台词，如果没有则说 ui_text
+    try:
+        tts.say(req.line_key)
+    except Exception:
+        tts.say_text(req.ui_text)
+
+    return {
+        "ok": rr.ok,
+        "session_id": req.session_id,
+        "action": req.action,
+        "error_code": rr.error_code,
+    }
