@@ -1,25 +1,35 @@
-# Implementation Plan｜机械臂麻将 × OpenClaw
+# Implementation Plan | Robot Arm Mahjong × OpenClaw
 
-> 更新：2026-02-27 晚
+> Updated: 2026-02-28
+
+This doc is the single source of truth for **ownership**, **data flow**, and the **two-day delivery plan**.
 
 ---
 
-## 系统架构总览
+## 0) Ownership & Control (must be explicit)
+
+- **OpenClaw Brain (EC2)** owns **decisions & personalization**: what scene to run, what to say, what to do next.
+- **Mac Local Hub (FastAPI)** owns **I/O**: camera access, web UI rendering, local audio playback (TTS/SFX), and local logs.
+- **Arm Team Service (HTTP)** owns **motion execution only** (primitives). No product logic.
+
+Reference (sequence + API list): `software/docs/ARCH_FLOW.md`
+
+---
+
+## 1) System Overview
 
 ```
-Discord 指令
+Discord commands / Web buttons
     ↓
-OpenClaw Brain（EC2）— skill.ts / prompt
-    ↓ HTTP
-FastAPI 后端（Mac 本地，port 8000）
-    ├── Orchestrator 状态机
-    ├── Arm Adapter（SOMA SO-ARM100 via LeRobot / HTTP）
-    ├── Vision Adapter（USB 摄像头 → 牌识别）
-    └── TTS Player（afplay wav → macOS say 降级）
+OpenClaw Brain (EC2)
+    ↓ HTTP (Tailscale)
+Mac Local Hub (FastAPI, port 8000)
+    ├── Orchestrator state machine
+    ├── Arm Adapter (HTTP / LeRobot)
+    ├── Vision Adapter (Mac camera → minimal classification)
+    └── Local Audio (TTS/SFX)
     ↓
-Web 控制面板（localhost:8000）
-    ├── 人物 Avatar（动画状态 + 对话气泡）
-    └── Skill Navigator Dashboard（历史记录 + 参数）
+Web Control Panel (http://localhost:8000)
 ```
 
 ---
