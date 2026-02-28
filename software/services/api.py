@@ -1,5 +1,11 @@
+import base64
+import re
 from fastapi import FastAPI
-from software.services.models import RunSceneRequest, RunSceneResponse, StatusResponse, RecognizeOut
+from software.services.models import (
+    RunSceneRequest, RunSceneResponse, StatusResponse, RecognizeOut,
+    CaptureFrameRequest, CaptureFrameResponse,
+    VoiceTriggerRequest, VoiceTriggerResponse,
+)
 from software.services.status_store import StatusStore
 from software.orchestrator.contracts import RunRequest
 from software.orchestrator.state_machine import Orchestrator
@@ -78,3 +84,64 @@ def shake():
     if hasattr(arm, "shake"):
         arm.shake()
     return {"ok": True}
+
+
+@app.post("/capture_frame", response_model=CaptureFrameResponse)
+def capture_frame(req: CaptureFrameRequest):
+    """接收前端截帧（base64 JPEG），交给视觉适配器识别牌面。"""
+    try:
+        image_bytes = base64.b64decode(req.image)
+    except Exception as e:
+        status.log(f"CAPTURE_FRAME decode error: {e}")
+        return CaptureFrameResponse(ok=False, error="base64 decode failed")
+
+    status.log("CAPTURE_FRAME received")
+    try:
+        result = vision.identify(image_bytes)
+        rec_out = RecognizeOut(label=result.label, confidence=result.confidence)
+        status.last_recognized = result
+        status.log(f"CAPTURE_FRAME result: {result.label} ({result.confidence:.2f})")
+        return CaptureFrameResponse(ok=True, recognized=rec_out)
+    except Exception as e:
+        status.log(f"CAPTURE_FRAME vision error: {e}")
+        return CaptureFrameResponse(ok=False, error=str(e))
+
+
+# Simple keyword rules for voice commands
+_VOICE_RULES = [
+    (r"场景\s*[Aa]|scene\s*[Aa]|[Aa]\s*场景", "scene_a", "好，执行场景 A！"),
+    (r"场景\s*[Bb]|scene\s*[Bb]|[Bb]\s*场景", "scene_b", "好，执行场景 B！"),
+    (r"点三点|tap",                             "tap",     "好，点三点！"),
+    (r"点头|nod|没问题",                         "nod",     "点头 ✅"),
+    (r"摇头|shake|不行",                         "shake",   "摇头 ❌"),
+    (r"回零|回家|home",                           "home",    "回零位！"),
+    (r"急停|estop|停止",                          "estop",   "紧急停止！"),
+]
+
+@app.post("/voice_trigger", response_model=VoiceTriggerResponse)
+def voice_trigger(req: VoiceTriggerRequest):
+    """解析语音文本，触发对应动作。"""
+    text = req.text.strip()
+    status.log(f"VOICE: {text}")
+
+    for pattern, action, reply in _VOICE_RULES:
+        if re.search(pattern, text, re.IGNORECASE):
+            status.log(f"VOICE matched: {action}")
+            # Fire-and-forget style: trigger action via existing endpoints logic
+            if action == "scene_a":
+                orch.run_scene(RunRequest(scene="A", style="polite", safe=True))
+            elif action == "scene_b":
+                orch.run_scene(RunRequest(scene="B", style="polite", safe=True))
+            elif action == "tap" and hasattr(arm, "tap"):
+                arm.tap(times=3)
+            elif action == "nod" and hasattr(arm, "nod"):
+                arm.nod()
+            elif action == "shake" and hasattr(arm, "shake"):
+                arm.shake()
+            elif action == "home":
+                arm.home()
+            elif action == "estop":
+                arm.estop()
+            return VoiceTriggerResponse(ok=True, action=action, reply=reply)
+
+    return VoiceTriggerResponse(ok=True, action=None, reply="听到了，但不确定要做什么 🤔")

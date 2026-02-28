@@ -7,29 +7,133 @@
 </head>
 <body>
 
+<!-- ===== Top Bar ===== -->
 <div class="topbar">
   <div class="topbar-title">🀄 Robot Arm Mahjong</div>
+  <div class="topbar-center">
+    <button class="mode-btn active" id="btn-play" onclick="switchMode('play')">🎮 对局</button>
+    <button class="mode-btn" id="btn-nav" onclick="switchMode('nav')">📊 导航</button>
+  </div>
   <div class="topbar-status">
     <span class="dot" id="dot"></span>
     <span id="status-label">连接中...</span>
   </div>
 </div>
 
+<!-- ===================== PLAY MODE ===================== -->
+<div class="mode-screen" id="screen-play">
+
+  <!-- Camera strip (OpenClaw eyes) -->
+  <div class="camera-strip">
+    <div class="camera-box">
+      <video id="camera-feed" autoplay muted playsinline></video>
+      <canvas id="camera-canvas" style="display:none"></canvas>
+      <div class="camera-label">👁 OpenClaw 视角</div>
+      <div class="camera-status" id="camera-status">未连接</div>
+    </div>
+    <div class="camera-actions">
+      <button class="btn btn--sm" onclick="startCamera()">开启摄像头</button>
+      <button class="btn btn--sm btn--accent" onclick="captureAndSend()">📸 截帧 → OpenClaw</button>
+    </div>
+  </div>
+
+  <!-- Center: Avatar -->
+  <div class="play-center">
+    <div class="avatar-wrap">
+      <div class="avatar-stage" id="avatar-stage">
+        <!-- Drop state-based gifs: static/avatar_idle.gif, avatar_pick.gif, avatar_nod.gif, avatar_shake.gif -->
+        <img id="avatar-anim" src="/static/avatar_idle.gif" onerror="this.style.display='none'" alt="" />
+        <div class="avatar-emoji-big" id="avatar-emoji-big">🤖</div>
+      </div>
+    </div>
+
+    <div class="speech-bubble-big" id="speech-bubble-big">
+      <span id="speech-text-big">等待指令...</span>
+    </div>
+
+    <div class="tile-result" id="tile-result">
+      <span class="tile-result-label">识别到</span>
+      <span class="tile-result-value" id="tile-result-value">—</span>
+      <span class="tile-result-conf" id="tile-result-conf"></span>
+    </div>
+  </div>
+
+  <!-- Right: Controls -->
+  <div class="play-controls">
+    <div class="quick-btns">
+      <button class="qbtn qbtn--a" id="qbtn-a" onclick="runScene('A')">
+        <span class="qbtn-icon">🃏</span>
+        <span class="qbtn-label">验牌 → 扔出</span>
+        <span class="qbtn-sub">Scene A</span>
+      </button>
+      <button class="qbtn qbtn--b" id="qbtn-b" onclick="runScene('B')">
+        <span class="qbtn-icon">↩️</span>
+        <span class="qbtn-label">验牌 → 退回</span>
+        <span class="qbtn-sub">Scene B</span>
+      </button>
+    </div>
+
+    <div class="expr-row">
+      <button class="expr-btn" onclick="runExtra('tap')" title="点三点">👆</button>
+      <button class="expr-btn" onclick="runExtra('nod')" title="点头">✅</button>
+      <button class="expr-btn" onclick="runExtra('shake')" title="摇头">❌</button>
+      <button class="expr-btn" onclick="post('/home',{})" title="回零位">🏠</button>
+    </div>
+
+    <div class="play-settings">
+      <label class="setting-label">
+        风格
+        <select id="style">
+          <option value="polite">礼貌</option>
+          <option value="meme">梗</option>
+        </select>
+      </label>
+      <label class="setting-label">
+        安全
+        <select id="safe">
+          <option value="true">开</option>
+          <option value="false">关</option>
+        </select>
+      </label>
+    </div>
+
+    <!-- Voice input -->
+    <div class="voice-section">
+      <button class="mic-btn" id="mic-btn" onclick="toggleMic()">
+        <span id="mic-icon">🎤</span>
+        <span id="mic-label">语音输入</span>
+      </button>
+      <div class="voice-transcript" id="voice-transcript">—</div>
+    </div>
+
+    <button class="estop-btn" onclick="post('/estop',{})">🚨 ESTOP</button>
+  </div>
+
+  <!-- Bottom log strip -->
+  <div class="log-strip">
+    <span class="log-strip-label">日志</span>
+    <pre id="log-strip-content">—</pre>
+  </div>
+
+</div><!-- /screen-play -->
+
+
+<!-- ===================== NAVIGATOR MODE ===================== -->
+<div class="mode-screen hidden" id="screen-nav">
 <div class="layout">
 
-  <!-- LEFT: Character avatar panel -->
   <aside class="panel-avatar">
     <div class="avatar-frame" id="avatar-frame">
-      <img id="avatar-img" src="/static/avatar.png" onerror="this.style.display='none'" alt="" />
+      <img id="avatar-img-nav" src="/static/avatar_idle.gif" onerror="this.style.display='none'" alt="" />
       <div class="avatar-emoji" id="avatar-emoji">🤖</div>
       <div class="avatar-state-badge" id="avatar-state">待机</div>
     </div>
 
-    <div class="speech-bubble" id="speech-bubble">
+    <div class="speech-bubble">
       <span id="speech-text">等待指令...</span>
     </div>
 
-    <div class="recognized-card" id="recognized-card">
+    <div class="recognized-card">
       <div class="rec-label">最近识别</div>
       <div class="rec-tile" id="rec-tile">—</div>
       <div class="rec-conf" id="rec-conf"></div>
@@ -51,38 +155,37 @@
     </div>
   </aside>
 
-  <!-- RIGHT: Dashboard -->
   <main class="panel-dashboard">
 
     <section class="section">
       <h2 class="section-title">🎯 技能 Skills</h2>
       <div class="skill-grid">
-        <div class="skill-card" id="skill-a" onclick="runScene('A')">
+        <div class="skill-card" onclick="switchMode('play');runScene('A')">
           <div class="skill-icon">🃏</div>
           <div class="skill-name">Scene A</div>
           <div class="skill-desc">抓牌 → 验牌 → 扔出</div>
         </div>
-        <div class="skill-card" id="skill-b" onclick="runScene('B')">
+        <div class="skill-card" onclick="switchMode('play');runScene('B')">
           <div class="skill-icon">↩️</div>
           <div class="skill-name">Scene B</div>
           <div class="skill-desc">抓牌 → 验牌 → 退回</div>
         </div>
-        <div class="skill-card skill-extra" onclick="runExtra('tap')">
+        <div class="skill-card skill-extra" onclick="switchMode('play');runExtra('tap')">
           <div class="skill-icon">👆</div>
           <div class="skill-name">点三点</div>
           <div class="skill-desc">末端执行器</div>
         </div>
-        <div class="skill-card skill-extra" onclick="runExtra('nod')">
+        <div class="skill-card skill-extra" onclick="switchMode('play');runExtra('nod')">
           <div class="skill-icon">✅</div>
           <div class="skill-name">点头</div>
           <div class="skill-desc">牌没问题</div>
         </div>
-        <div class="skill-card skill-extra" onclick="runExtra('shake')">
+        <div class="skill-card skill-extra" onclick="switchMode('play');runExtra('shake')">
           <div class="skill-icon">❌</div>
           <div class="skill-name">摇头</div>
           <div class="skill-desc">还得练啊</div>
         </div>
-        <div class="skill-card skill-home" onclick="post('/home', {})">
+        <div class="skill-card skill-home" onclick="post('/home',{})">
           <div class="skill-icon">🏠</div>
           <div class="skill-name">回零位</div>
           <div class="skill-desc">Home position</div>
@@ -95,30 +198,28 @@
       <div class="settings-row">
         <label class="setting-label">
           台词风格
-          <select id="style">
+          <select id="style-nav">
             <option value="polite">礼貌 polite</option>
             <option value="meme">梗 meme</option>
           </select>
         </label>
         <label class="setting-label">
           安全模式
-          <select id="safe">
+          <select id="safe-nav">
             <option value="true">开 Safe</option>
             <option value="false">关 Fast</option>
           </select>
         </label>
-        <button class="btn btn--danger" onclick="post('/estop', {})">🚨 ESTOP</button>
+        <button class="btn btn--danger" onclick="post('/estop',{})">🚨 ESTOP</button>
       </div>
     </section>
 
     <section class="section">
-      <h2 class="section-title">📋 对局记录</h2>
+      <h2 class="section-title">📋 对局记录 · 复盘</h2>
       <div class="history-wrap">
         <table class="history-table">
           <thead>
-            <tr>
-              <th>#</th><th>场景</th><th>结果</th><th>识别牌</th><th>耗时</th><th>风格</th>
-            </tr>
+            <tr><th>#</th><th>场景</th><th>结果</th><th>识别牌</th><th>耗时</th><th>风格</th></tr>
           </thead>
           <tbody id="history-body">
             <tr><td colspan="6" class="empty-row">暂无记录</td></tr>
@@ -134,6 +235,7 @@
 
   </main>
 </div>
+</div><!-- /screen-nav -->
 
 <script src="/static/main.js"></script>
 </body>

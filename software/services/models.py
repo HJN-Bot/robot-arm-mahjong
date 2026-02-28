@@ -23,3 +23,19 @@ class StatusResponse(BaseModel):
     last_error: Optional[str] = None
     recognized: Optional[RecognizeOut] = None
     logs: list[str]
+
+class CaptureFrameRequest(BaseModel):
+    image: str  # base64 JPEG
+
+class CaptureFrameResponse(BaseModel):
+    ok: bool
+    recognized: Optional[RecognizeOut] = None
+    error: Optional[str] = None
+
+class VoiceTriggerRequest(BaseModel):
+    text: str
+
+class VoiceTriggerResponse(BaseModel):
+    ok: bool
+    action: Optional[str] = None
+    reply: str
