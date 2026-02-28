@@ -26,11 +26,28 @@
 
 ---
 
-## 系统架构（四层）
-1) **交互层**：语音输出（TTS）+ 指令入口（Discord/按钮作为保底）
-2) **OpenClaw 编排层**：场景状态机、技能路由、日志与参数
-3) **感知层（Vision）**：摄像头 → 桌面标定/目标识别 → 结构化状态
-4) **执行层（Arm）**：机械臂动作库（抓/收回看牌/放置/点3点/点头/摇头）+ 安全限位
+## System Architecture (Who controls what?)
+
+### Participants
+- **Discord**: input (commands)
+- **OpenClaw Brain (EC2)**: *decision owner* (persona/prefs/scene routing)
+- **Mac Local Hub (FastAPI + Orchestrator + Vision + Local Audio)**: *I/O owner* (camera, web UI, TTS/SFX)
+- **Arm Team Service (HTTP, same Wi‑Fi)**: actuator primitives only (pick/present/throw/return/home/estop/status)
+
+### Control Ownership (very important)
+- **OpenClaw (EC2) ALWAYS owns decisions**: what scene to run, what to say, what to do next.
+- **Mac Local Hub owns I/O**: camera access, web rendering, audio playback, local logging.
+- **Arm service owns motion execution only**: no product logic.
+
+### High-level Data Flow
+1) User triggers from **Discord** (`/mj start`, `/mj scene A|B`) or from **Web Panel** (buttons)
+2) **OpenClaw Brain (EC2)** calls **Mac Local Hub** via HTTP (Tailscale)
+3) Mac Hub calls **Arm Team HTTP** → `pick` → `present_to_camera`
+4) Mac Hub runs **Vision** (minimal class: `white_dragon` vs `one_dot`)
+5) Brain returns a **Decision Packet** (`action` + `line_key` + `ui_text` + `sfx`)
+6) Mac Hub executes throw/return + plays TTS/SFX + updates UI
+
+> Full sequence diagram + API list: `software/docs/ARCH_FLOW.md`
 
 ---
 
