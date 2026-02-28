@@ -1,13 +1,16 @@
 """
-TTS player for macOS.
+TTS player — cross-platform.
 
 Priority:
-  1. Pre-recorded wav: assets/<style>/<line>.wav  -> afplay (no deps)
-  2. Dynamic text fallback: macOS `say` command
+  1. Pre-recorded wav: assets/<style>/<line>.wav
+  2. Dynamic text fallback: espeak (Linux) or macOS `say`
+  3. Silent log if no TTS tool is available
 """
 
 import os
+import shutil
 import subprocess
+import sys
 from software.adapters.tts import lines as L
 
 
@@ -27,7 +30,7 @@ class LocalPlayerTTS:
             self._say_text(text)
 
     def say_text(self, text: str):
-        """Speak arbitrary text via macOS say (for dynamic lines)."""
+        """Speak arbitrary text (for dynamic lines)."""
         self.status.log(f"tts(dynamic): {text}")
         self._say_text(text)
 
@@ -36,8 +39,21 @@ class LocalPlayerTTS:
         return os.path.join(self.assets_dir, style, fname)
 
     def _play_wav(self, path: str):
-        subprocess.Popen(["afplay", path])
+        if sys.platform == "darwin":
+            subprocess.Popen(["afplay", path])
+        elif shutil.which("aplay"):
+            subprocess.Popen(["aplay", "-q", path])
+        elif shutil.which("paplay"):
+            subprocess.Popen(["paplay", path])
+        else:
+            self.status.log("tts: no audio player found, skipping wav playback")
 
     def _say_text(self, text: str, voice: str = "Meijia"):
-        # Meijia is a high-quality Mandarin voice bundled with macOS
-        subprocess.Popen(["say", "-v", voice, text])
+        if sys.platform == "darwin":
+            subprocess.Popen(["say", "-v", voice, text])
+        elif shutil.which("espeak"):
+            subprocess.Popen(["espeak", text])
+        elif shutil.which("espeak-ng"):
+            subprocess.Popen(["espeak-ng", text])
+        else:
+            self.status.log(f"tts: no speech tool available, would say: {text}")
