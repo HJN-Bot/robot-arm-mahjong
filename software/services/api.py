@@ -35,15 +35,47 @@ else:
     arm = MockArm(status)
     status.log("arm adapter: mock")
 
-# Vision: use HistogramVision if opencv is available, else fall back to Mock
-try:
-    from software.adapters.vision.histogram_vision import HistogramVision
-    vision = HistogramVision(status)
-    status.log("vision: HistogramVision ready")
-except ImportError:
+# Vision adapter: controlled by VISION_ADAPTER env var
+# Values: kimi | claude | histogram | mock  (default: kimi)
+_vision_adapter = os.getenv("VISION_ADAPTER", "kimi").lower()
+
+if _vision_adapter == "kimi":
+    from software.adapters.vision.kimi_vision import KimiVision
+    vision = KimiVision(status)
+    if not vision._ready:
+        status.log("vision: KimiVision not ready, falling back to histogram")
+        try:
+            from software.adapters.vision.histogram_vision import HistogramVision
+            vision = HistogramVision(status)
+        except ImportError:
+            from software.adapters.vision.mock_vision import MockVision
+            vision = MockVision(status)
+
+elif _vision_adapter == "claude":
+    from software.adapters.vision.claude_vision import ClaudeVision
+    vision = ClaudeVision(status)
+    if not vision._ready:
+        status.log("vision: ClaudeVision not ready, falling back to histogram")
+        try:
+            from software.adapters.vision.histogram_vision import HistogramVision
+            vision = HistogramVision(status)
+        except ImportError:
+            from software.adapters.vision.mock_vision import MockVision
+            vision = MockVision(status)
+
+elif _vision_adapter == "histogram":
+    try:
+        from software.adapters.vision.histogram_vision import HistogramVision
+        vision = HistogramVision(status)
+    except ImportError:
+        from software.adapters.vision.mock_vision import MockVision
+        vision = MockVision(status)
+
+else:
     from software.adapters.vision.mock_vision import MockVision
     vision = MockVision(status)
-    status.log("vision: MockVision (opencv not installed)")
+
+status.log(f"vision adapter: {type(vision).__name__}")
 
 tts = LocalPlayerTTS(status)
 
@@ -198,6 +230,30 @@ def shake():
     if hasattr(arm, "shake"):
         arm.shake()
     return {"ok": True}
+
+
+@app.post("/quick_identify", response_model=CaptureFrameResponse)
+def quick_identify():
+    """服务器直接用 CV2Camera 截帧 + 识别，省去浏览器上传图片的延迟。
+    比 /capture_frame 快 ~200-400ms（无浏览器编码/上传开销）。
+    arm/present_to_camera 返回后立即调用此接口。
+    """
+    frame_bytes = camera.capture_bytes()
+    if not frame_bytes:
+        status.log("QUICK_IDENTIFY: camera capture failed")
+        return CaptureFrameResponse(ok=False, error="camera capture failed")
+
+    status.log("QUICK_IDENTIFY: captured, identifying...")
+    try:
+        result = vision.identify(frame_bytes)
+        rec_out = RecognizeOut(label=result.label, confidence=result.confidence)
+        status.last_recognized = result
+        recognition_ok = result.confidence >= RECOGNITION_SUCCESS_THRESHOLD
+        status.log(f"QUICK_IDENTIFY: {result.label} ({result.confidence:.2f}) ok={recognition_ok}")
+        return CaptureFrameResponse(ok=True, recognized=rec_out, recognition_ok=recognition_ok)
+    except Exception as e:
+        status.log(f"QUICK_IDENTIFY: error: {e}")
+        return CaptureFrameResponse(ok=False, error=str(e))
 
 
 @app.get("/health")

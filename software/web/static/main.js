@@ -297,10 +297,11 @@ async function captureFrame() {
   const video  = $("camera-feed");
   const canvas = $("camera-canvas");
   if (!cameraStream || !video || video.readyState < 2) return null;
-  canvas.width  = video.videoWidth;
-  canvas.height = video.videoHeight;
-  canvas.getContext("2d").drawImage(video, 0, 0);
-  return canvas.toDataURL("image/jpeg", 0.85).split(",")[1];
+  // 缩图到 480×360（~25KB vs ~250KB），KIMI Vision 推理快 ~3x，质量识别牌面够用
+  canvas.width  = 480;
+  canvas.height = 360;
+  canvas.getContext("2d").drawImage(video, 0, 0, 480, 360);
+  return canvas.toDataURL("image/jpeg", 0.75).split(",")[1];
 }
 
 async function autoLoopTick() {
@@ -447,8 +448,7 @@ function toggleAutoLoop() {
     };
     countdownTimer = setTimeout(tick, 1000);
 
-    // 后续通过 setInterval 持续监听（每次 tick 内部有 cooldown 保护）
-    autoLoopTimer = setInterval(autoLoopTick, AUTO_INTERVAL_MS);
+    // 不使用 setInterval 持续循环 — 改由 OpenClaw /trigger 驱动单次执行
   } else {
     if (countdownTimer) { clearTimeout(countdownTimer); countdownTimer = null; }
     if (autoLoopTimer)  { clearInterval(autoLoopTimer); autoLoopTimer = null; }
