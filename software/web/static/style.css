@@ -249,6 +249,37 @@ pre#logs {
 .camera-actions { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .btn--sm { padding: 5px 10px; font-size: .78rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); cursor: pointer; }
 .btn--accent { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn--auto  { background: #16a34a; border-color: #16a34a; color: #fff; font-weight: 600; }
+.btn--auto.active { background: #b91c1c; border-color: #b91c1c; }
+.btn--ghost { background: transparent; border-color: var(--border); color: var(--text-muted, #888); }
+.btn--trigger { background: #d97706; border-color: #d97706; color: #fff; font-weight: 700; font-size: .85rem !important; letter-spacing: .02em; }
+.btn--trigger:hover { background: #f59e0b; border-color: #f59e0b; }
+.btn--calib { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
+.btn--calib:hover { background: #2563eb; }
+
+/* Calibration panel */
+.calib-panel {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.calib-title { font-size: .75rem; font-weight: 600; color: var(--muted); letter-spacing: .04em; }
+.calib-status { display: flex; gap: 8px; }
+.calib-chip {
+  font-size: .72rem;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  transition: all .3s;
+}
+.calib-chip.ok { background: #14532d; border-color: #16a34a; color: #4ade80; }
+.calib-btns { display: flex; gap: 6px; }
+.calib-hint { font-size: .7rem; color: var(--muted); font-style: italic; }
 
 /* Avatar center */
 .play-center {

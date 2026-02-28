@@ -5,6 +5,10 @@ class RunSceneRequest(BaseModel):
     scene: Literal["A", "B"]
     style: Literal["polite", "meme"] = "polite"
     safe: bool = True
+    # Optional: pass pre-identified label + confidence from frontend capture_frame
+    # so orchestrator skips its internal recognize step
+    recognized_label: Optional[str] = None
+    recognized_conf: Optional[float] = None
 
 class RecognizeOut(BaseModel):
     label: str
@@ -16,12 +20,18 @@ class RunSceneResponse(BaseModel):
     duration_ms: int
     error_code: Optional[str] = None
     recognized: Optional[RecognizeOut] = None
+    recognition_ok: Optional[bool] = None  # 与 Status/CaptureFrame 一致
+
+# 与前端 CONF_DISPLAY_SUCCESS 一致，仅当置信度 >= 此值视为「识别成功」
+RECOGNITION_SUCCESS_THRESHOLD = 0.65
 
 class StatusResponse(BaseModel):
     busy: bool
     last_scene: Optional[str] = None
     last_error: Optional[str] = None
     recognized: Optional[RecognizeOut] = None
+    recognition_ok: Optional[bool] = None  # 置信度 >= threshold 时为 True，供 UI 显示「识别成功」
+    trigger_pending: bool = False           # 外部触发开牌信号，前端读取后清零
     logs: list[str]
 
 class CaptureFrameRequest(BaseModel):
@@ -30,6 +40,7 @@ class CaptureFrameRequest(BaseModel):
 class CaptureFrameResponse(BaseModel):
     ok: bool
     recognized: Optional[RecognizeOut] = None
+    recognition_ok: Optional[bool] = None  # 置信度 >= RECOGNITION_SUCCESS_THRESHOLD 时为 True
     error: Optional[str] = None
 
 class VoiceTriggerRequest(BaseModel):
@@ -57,3 +68,15 @@ class BrainDecisionRequest(BaseModel):
 class SessionStartResponse(BaseModel):
     session_id: str
     ok: bool
+
+class AutoRunRequest(BaseModel):
+    style: Literal["polite", "meme"] = "polite"
+    safe: bool = True
+
+class AutoRunResponse(BaseModel):
+    ok: bool
+    scene: Optional[Literal["A", "B"]] = None
+    label: Optional[str] = None
+    confidence: Optional[float] = None
+    duration_ms: int
+    error_code: Optional[str] = None

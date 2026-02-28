@@ -72,7 +72,13 @@
 通过 HTTP 调用 `http://100.111.27.39:8000`：
 
 ```
-运行完整场景：
+触发开牌（Watch Mode，推荐）：
+  POST /trigger     query: style=polite|meme&safe=true|false
+  → 设置 trigger_pending，Web UI 检测到后自动执行：
+    机械臂抓牌 → 展示 → 识别花色 → 自动执行 Scene A/B → TTS
+  注意：仅在 busy=false 时有效；识别结果从 GET /status 读取
+
+运行完整场景（手动指定 scene）：
   POST /run_scene   body: { scene: "A"|"B", style: "polite"|"meme", safe: true|false }
   → 机械臂抓牌 → 展示 → 识别 → TTS → 扔/退
 
@@ -84,7 +90,7 @@
   POST /shake       摇头（表示不同意/拒绝）
 
 查询状态：
-  GET  /status      → { busy, recognized: {label, confidence}, logs }
+  GET  /status      → { busy, recognized: {label, confidence}, trigger_pending, logs }
 
 Brain 回调（接 Mac 的识别结果）：
   POST /brain/input     body: { session_id, label, confidence }
@@ -99,15 +105,16 @@ Brain 回调（接 Mac 的识别结果）：
 
 ```
 1. 用户："/mj start" 或 "开始"
-   你：确认准备，回应一句开场白，调用 POST /run_scene
+   你：确认准备，回应开场白
 
-2. 机械臂抓牌，摄像头识别（Mac 自动处理）
+2. 你调用 POST /trigger（推荐）
+   → Mac 的 Watch Mode 收到信号，自动执行：
+     机械臂抓牌 → 展示 → 花色识别 → Scene A/B → TTS
 
-3. Mac 回调 POST /brain/input { label, confidence }
-   你：根据牌面 + 当前对局情况做决策
+3. 等待约 4-6s，调用 GET /status 确认 busy=false 且 recognized.label 有值
+   你：根据 recognized.label + 对局情况给出解说
 
-4. 你调用 POST /brain/decision { action: "throw"|"return", line_key, ui_text }
-   Mac 执行动作 + 播放 TTS
+4. （可选）如需 override：调用 POST /run_scene { scene: "A"|"B" }
 
 5. 你向 Discord 发一条解说："看到白板，扔了，这张没用。"
 

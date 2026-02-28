@@ -14,4 +14,9 @@ if [ ! -d "$VENV" ]; then
 fi
 
 echo "Starting server at http://0.0.0.0:8000  (local: http://localhost:8000)"
-"$VENV/bin/uvicorn" software.web.app:app --host 0.0.0.0 --reload --port 8000
+# Use --reload-dir to ONLY watch source code directories (never .venv / node_modules)
+"$VENV/bin/uvicorn" software.web.app:app --host 0.0.0.0 --reload --port 8000 \
+  --reload-dir software/web \
+  --reload-dir software/services \
+  --reload-dir software/orchestrator \
+  --reload-dir software/adapters

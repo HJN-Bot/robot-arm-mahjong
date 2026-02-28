@@ -9,7 +9,7 @@ root = Path(__file__).resolve().parent
 
 app = FastAPI(title="robot-arm-mahjong web")
 
-# index page — must be registered before the catch-all sub-app mount
+# "/" must be registered BEFORE the catch-all mount("") or it gets intercepted
 @app.get("/", response_class=HTMLResponse)
 def index():
     return (root / "templates" / "index.html").read_text(encoding="utf-8")

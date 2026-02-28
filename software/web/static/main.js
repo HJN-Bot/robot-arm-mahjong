@@ -5,6 +5,17 @@ let micActive   = false;
 let recognition = null;
 let cameraStream = null;
 
+// Auto-recognition loop
+const AUTO_CONF_THRESHOLD = 0.65;   // min confidence to trigger scene
+const AUTO_INTERVAL_MS    = 1500;   // capture every 1.5s
+const AUTO_COOLDOWN_MS    = 7000;   // pause 7s after triggering scene
+// 仅当置信度 >= 此阈值时在 UI 显示「识别成功」✅，否则显示「置信度不足」
+const CONF_DISPLAY_SUCCESS = 0.65;
+let autoLoopActive   = false;
+let autoLoopCooldown = false;
+let autoLoopTimer    = null;
+let countdownTimer   = null;  // 3s auto-trigger countdown after camera open
+
 // Avatar state -> display mapping
 const AVATAR_STATE = {
   idle:     { badge: "待机",   emoji: "🤖", speech: "等待指令...", cls: "" },
@@ -75,22 +86,44 @@ function updateDot(busy, hasError) {
   }
 }
 
-function renderRecognized(rec) {
+/**
+ * 根据后端识别结果与置信度渲染；仅当置信度 >= CONF_DISPLAY_SUCCESS 时显示「识别成功」✅，
+ * 否则显示「置信度不足」，与后端状态一致。
+ * @param {Object} rec - { label, confidence }
+ * @param {{ success?: boolean }} opts - 若传 success: false 则强制显示为未成功（不跟置信度）
+ */
+function renderRecognized(rec, opts = {}) {
   if (!rec) return;
-  const label = TILE_LABEL[rec.label] || rec.label;
-  const conf  = "置信度 " + Math.round(rec.confidence * 100) + "%";
+  const tileName = TILE_LABEL[rec.label] || rec.label;
+  const isSuccess = opts.success !== undefined
+    ? opts.success
+    : rec.confidence >= CONF_DISPLAY_SUCCESS;
+  const displayText = isSuccess ? tileName + " ✅ 识别成功" : tileName + " ⚠️ 置信度不足";
+  const conf        = "置信度 " + Math.round(rec.confidence * 100) + "%";
 
   // Nav mode
   const recTile = $("rec-tile");
   const recConf = $("rec-conf");
-  if (recTile) recTile.textContent = label;
+  if (recTile) recTile.textContent = displayText;
   if (recConf) recConf.textContent = conf;
 
   // Play mode
   const rv = $("tile-result-value");
   const rc = $("tile-result-conf");
-  if (rv) rv.textContent = label;
+  if (rv) rv.textContent = displayText;
   if (rc) rc.textContent = conf;
+}
+
+/** 无识别结果时清空展示，避免一直显示上一次的「识别成功」 */
+function clearRecognized() {
+  const recTile = $("rec-tile");
+  const recConf = $("rec-conf");
+  const rv = $("tile-result-value");
+  const rc = $("tile-result-conf");
+  if (recTile) recTile.textContent = "—";
+  if (recConf) recConf.textContent = "";
+  if (rv) rv.textContent = "—";
+  if (rc) rc.textContent = "";
 }
 
 function renderStats() {
@@ -177,7 +210,11 @@ async function startCamera() {
     const st = $("camera-status");
     st.textContent = "已连接";
     st.classList.add("on");
-    appendLog("[CAM] 摄像头已连接");
+    appendLog("[CAM] 摄像头已连接，点「开始自动识别」启动流程");
+    setAvatar("idle", "摄像头就绪，点「开始自动识别」");
+
+    const camBtn = $("cam-btn");
+    if (camBtn) camBtn.textContent = "✅ 摄像头已开";
   } catch (e) {
     const st = $("camera-status");
     st.textContent = "无权限";
@@ -202,12 +239,14 @@ async function captureAndSend() {
 
   try {
     const r = await post("/capture_frame", { image: base64 });
-    if (r.recognized) {
-      renderRecognized(r.recognized);
+    if (r.ok && r.recognized) {
+      const ok = r.recognition_ok !== undefined ? r.recognition_ok : (r.recognized.confidence >= CONF_DISPLAY_SUCCESS);
+      renderRecognized(r.recognized, { success: ok });
       const lbl = TILE_LABEL[r.recognized.label] || r.recognized.label;
-      setAvatar("done", `识别到 ${lbl}`);
-      appendLog(`[CAM] 识别完成: ${r.recognized.label} (${Math.round(r.recognized.confidence * 100)}%)`);
+      setAvatar("done", ok ? `识别成功：${lbl}` : `置信度不足：${lbl}`);
+      appendLog(`[CAM] 识别: ${r.recognized.label} (${Math.round(r.recognized.confidence * 100)}%) ${ok ? "✅" : "⚠️"}`);
     } else {
+      clearRecognized();
       setAvatar("error", "识别失败");
       appendLog("[CAM] 识别失败: " + (r.error || "未知"));
     }
@@ -217,6 +256,196 @@ async function captureAndSend() {
     appendLog("[CAM] 请求失败: " + e.message);
     setTimeout(() => setAvatar("idle"), 3000);
   }
+}
+
+// ===== Auto-recognition loop =====
+// 3-step split flow (browser provides camera frame to avoid device conflict):
+//   Step 1: POST /arm/start_scene  → server: TTS + pick + present (blocks ~2s)
+//   Step 2: browser captures frame from webcam
+//   Step 3: POST /capture_frame    → HistogramVision identifies → show result immediately
+//   Step 4: POST /execute_scene    → arm throws/returns + closing TTS
+
+let autoRunning = false; // prevents getStatus() from overriding avatar mid-flow
+
+async function captureFrame() {
+  const video  = $("camera-feed");
+  const canvas = $("camera-canvas");
+  if (!cameraStream || !video || video.readyState < 2) return null;
+  canvas.width  = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext("2d").drawImage(video, 0, 0);
+  return canvas.toDataURL("image/jpeg", 0.85).split(",")[1];
+}
+
+async function autoLoopTick() {
+  if (!autoLoopActive || autoLoopCooldown || prevBusy) return;
+  autoLoopCooldown = true;
+  autoRunning = true;
+
+  const style = $("style")?.value || "polite";
+  const safe  = ($("safe")?.value !== "false");
+
+  // Reset recognition display
+  const rv = $("tile-result-value");
+  const rc = $("tile-result-conf");
+  const recTile = $("rec-tile");
+  const recConf = $("rec-conf");
+  if (rv) rv.textContent = "识别中...";
+  if (rc) rc.textContent = "";
+  if (recTile) recTile.textContent = "识别中...";
+  if (recConf) recConf.textContent = "";
+
+  try {
+    // ── Step 1: TTS + arm pick + present (server blocks ~2s) ──────────────
+    setAvatar("acting", "来！开牌...");
+    appendLog("[AUTO] Step1: 开牌 → 机械臂抓牌展示");
+    const step1 = await fetch(`/arm/start_scene?style=${style}&safe=${safe}`, { method: "POST" })
+      .then(r => r.json()).catch(() => ({ ok: false, error: "network" }));
+    if (!step1.ok) {
+      appendLog("[AUTO] Step1 失败: " + (step1.error || "unknown"));
+      setAvatar("error", "机械臂准备失败");
+      autoRunning = false;
+      setTimeout(() => { autoLoopCooldown = false; }, AUTO_COOLDOWN_MS);
+      return;
+    }
+
+    // ── Step 2+3: Burst capture after arm stabilizes (≤1s) ───────────────
+    setAvatar("thinking", "扫描牌面...");
+    appendLog("[AUTO] Step2: 臂已就位，连续采帧...");
+
+    if (!cameraStream) await startCamera();
+    if (!cameraStream) {
+      appendLog("[AUTO] Step2: 摄像头未就绪");
+      setAvatar("error", "摄像头未就绪");
+      autoRunning = false;
+      setTimeout(() => { autoLoopCooldown = false; }, AUTO_COOLDOWN_MS);
+      return;
+    }
+
+    // Burst: up to 4 frames, 200ms apart — take highest confidence, stop early at ≥85%
+    const BURST_FRAMES = 4;
+    const BURST_GAP_MS = 200;
+    let bestResult = null;
+
+    for (let i = 0; i < BURST_FRAMES; i++) {
+      if (i > 0) await new Promise(r => setTimeout(r, BURST_GAP_MS));
+      const b64 = await captureFrame();
+      if (!b64) continue;
+      const r = await post("/capture_frame", { image: b64 });
+      if (!r.ok || !r.recognized) continue;
+      const conf = r.recognized.confidence;
+      appendLog(`[AUTO] Step3 f${i+1}: ${r.recognized.label} conf=${Math.round(conf*100)}%`);
+      if (!bestResult || conf > bestResult.recognized.confidence) {
+        bestResult = r;
+        renderRecognized(r.recognized, { success: conf >= AUTO_CONF_THRESHOLD });
+      }
+      if (conf >= 0.85) break; // good enough, stop early
+    }
+
+    if (!bestResult || !bestResult.recognized) {
+      appendLog("[AUTO] Step3: 所有帧识别失败");
+      clearRecognized();
+      const rv = $("tile-result-value");
+      const recTile = $("rec-tile");
+      if (rv) rv.textContent = "识别失败";
+      if (recTile) recTile.textContent = "识别失败";
+      setAvatar("error", "识别失败");
+      autoRunning = false;
+      setTimeout(() => { autoLoopCooldown = false; }, AUTO_COOLDOWN_MS);
+      return;
+    }
+    const { label, confidence } = bestResult.recognized;
+    const confPct = Math.round(confidence * 100);
+    const recOk = confidence >= AUTO_CONF_THRESHOLD;
+    renderRecognized(bestResult.recognized, { success: recOk });
+    appendLog(`[AUTO] Step3: 最终 → ${label} conf=${confPct}% ${recOk ? "✅" : "⚠️"}`);
+
+    // ── Step 4: Determine scene + execute arm action ──────────────────────
+    const scene = label === "white_dragon" ? "A" : "B";
+    appendLog(`[AUTO] Step4: Scene ${scene} — ${scene === "A" ? "扔出 → 我要验牌" : "退回 → 牌没有问题"}`);
+    setAvatar("acting", scene === "A" ? "扔出！" : "退回！");
+
+    const t0   = Date.now();
+    const exec = await post("/execute_scene", {
+      scene, style, safe,
+      recognized_label: label,
+      recognized_conf:  confidence,
+    });
+    const ms = Date.now() - t0;
+
+    if (exec.ok) {
+      history.push({ scene, ok: true, ms, label, conf: confidence, style });
+      renderStats();
+      renderHistory();
+      setAvatar("done", scene === "A" ? "扔出！我要验牌！" : "退回！牌没有问题！");
+      appendLog(`[AUTO] 完成 Scene ${scene} dt=${(ms/1000).toFixed(1)}s`);
+    } else {
+      appendLog(`[AUTO] Step4 失败: ${exec.error_code || "unknown"}`);
+      setAvatar("error", "执行失败");
+    }
+
+  } catch (e) {
+    appendLog("[AUTO] 异常: " + e.message);
+    setAvatar("error", "网络异常");
+  }
+
+  autoRunning = false;
+  setTimeout(() => {
+    autoLoopCooldown = false;
+    if (autoLoopActive) setAvatar("idle", "等待下次触发...");
+  }, 3000);
+}
+
+function toggleAutoLoop() {
+  autoLoopActive = !autoLoopActive;
+  const btn = $("auto-loop-btn");
+
+  if (autoLoopActive) {
+    autoLoopCooldown = false;
+    if (btn) { btn.textContent = "⏹ 停止"; btn.classList.add("active"); }
+
+    // 3s 倒计时后自动触发第一次开牌
+    if (countdownTimer) clearTimeout(countdownTimer);
+    let secs = 3;
+    setAvatar("thinking", `${secs}秒后开牌...`);
+    appendLog(`[AUTO] 自动识别启动 — ${secs}秒后触发开牌`);
+    const tick = () => {
+      secs--;
+      if (secs > 0) {
+        setAvatar("thinking", `${secs}秒后开牌...`);
+        countdownTimer = setTimeout(tick, 1000);
+      } else {
+        countdownTimer = null;
+        appendLog("[AUTO] 倒计时结束 → 触发开牌");
+        autoLoopTick();
+      }
+    };
+    countdownTimer = setTimeout(tick, 1000);
+
+    // 后续通过 setInterval 持续监听（每次 tick 内部有 cooldown 保护）
+    autoLoopTimer = setInterval(autoLoopTick, AUTO_INTERVAL_MS);
+  } else {
+    if (countdownTimer) { clearTimeout(countdownTimer); countdownTimer = null; }
+    if (autoLoopTimer)  { clearInterval(autoLoopTimer); autoLoopTimer = null; }
+    autoLoopCooldown = false;
+    if (btn) { btn.textContent = "🎯 开始自动识别"; btn.classList.remove("active"); }
+    setAvatar("idle");
+    appendLog("[AUTO] 自动识别已停止");
+  }
+}
+
+// Called by "开牌！" button — fire one full scene cycle immediately
+function triggerOnce() {
+  if (!autoLoopActive) {
+    appendLog("[WATCH] 请先点「开始自动识别」进入监听模式");
+    return;
+  }
+  if (autoLoopCooldown || autoRunning || prevBusy) {
+    appendLog("[WATCH] 正在执行中，请稍候...");
+    return;
+  }
+  appendLog("[WATCH] 手动触发开牌 → 执行识别流程");
+  autoLoopTick();
 }
 
 // ===== Voice input =====
@@ -305,19 +534,32 @@ async function getStatus() {
 
     updateDot(j.busy, !!j.last_error);
 
-    if (j.busy && !prevBusy) {
-      setAvatar("thinking");
-    } else if (!j.busy && prevBusy) {
-      const last = history[history.length - 1];
-      if (last) {
-        setAvatar(last.ok ? "done" : "error",
-          last.ok ? "搞定了！" : "哎，出了点问题");
-        setTimeout(() => setAvatar("idle"), 3000);
+    // Skip avatar updates while autoLoopTick is managing state manually
+    if (!autoRunning) {
+      if (j.busy && !prevBusy) {
+        setAvatar("thinking");
+      } else if (!j.busy && prevBusy) {
+        const last = history[history.length - 1];
+        if (last) {
+          setAvatar(last.ok ? "done" : "error",
+            last.ok ? "搞定了！" : "哎，出了点问题");
+          setTimeout(() => setAvatar("idle"), 3000);
+        }
       }
+      // 与后端状态同步：有结果则用后端 recognition_ok（或置信度）显示成功/不足，无结果则清空
+      if (j.recognized) {
+        const success = j.recognition_ok !== undefined ? j.recognition_ok : (j.recognized.confidence >= CONF_DISPLAY_SUCCESS);
+        renderRecognized(j.recognized, { success });
+      } else clearRecognized();
     }
     prevBusy = j.busy;
 
-    if (j.recognized) renderRecognized(j.recognized);
+    // Watch Mode: server sets trigger_pending (via POST /trigger or OpenClaw)
+    // → auto-fire one scene cycle
+    if (j.trigger_pending && autoLoopActive && !autoLoopCooldown && !autoRunning) {
+      appendLog("[WATCH] 收到外部开牌触发 → 执行识别流程");
+      autoLoopTick();
+    }
 
     // Nav logs
     const logsEl = $("logs");
@@ -357,7 +599,10 @@ async function runScene(scene) {
 
   $(`qbtn-${scene.toLowerCase()}`).classList.remove("active");
 
-  if (r.recognized) renderRecognized(r.recognized);
+  if (r.recognized) {
+    const ok = r.ok && (r.recognition_ok !== undefined ? r.recognition_ok : (r.recognized.confidence >= CONF_DISPLAY_SUCCESS));
+    renderRecognized(r.recognized, { success: ok });
+  }
 
   history.push({
     scene, ok: r.ok, ms,
@@ -394,8 +639,85 @@ function syncSelectors() {
   if (safPlay)   safPlay.addEventListener("change",   () => { if (safNav)   safNav.value   = safPlay.value; });
 }
 
+// ===== Calibration =====
+async function calibFromCamera(label) {
+  const labelName = label === "white_dragon" ? "白板" : "一饼";
+  const hint = $("calib-hint");
+
+  // Must use browser webcam so calibration & recognition share the same image source
+  if (!cameraStream) {
+    appendLog("[CALIB] 请先点「开启摄像头」");
+    if (hint) hint.textContent = "请先开启摄像头";
+    return;
+  }
+  const base64 = await captureFrame();
+  if (!base64) {
+    appendLog("[CALIB] 截帧失败");
+    if (hint) hint.textContent = "截帧失败，请重试";
+    return;
+  }
+
+  if (hint) hint.textContent = `正在标定 ${labelName}...`;
+  appendLog(`[CALIB] 标定 ${labelName} (${label})`);
+
+  try {
+    const res = await fetch(`/calibrate?label=${label}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: base64 }),
+    });
+    const r = await res.json();
+    if (r.ok) {
+      appendLog(`[CALIB] ${labelName} 标定成功 ✅`);
+      if (hint) hint.textContent = `${labelName} 标定成功！`;
+    } else {
+      appendLog(`[CALIB] ${labelName} 标定失败: ${r.error || "未知"}`);
+      if (hint) hint.textContent = `标定失败: ${r.error || "未知"}`;
+    }
+    if (r.calibration) updateCalibStatus(r.calibration);
+  } catch (e) {
+    appendLog("[CALIB] 请求失败: " + e.message);
+    if (hint) hint.textContent = "请求失败: " + e.message;
+  }
+}
+
+async function fetchCalibStatus() {
+  try {
+    const res = await fetch("/calibrate");
+    const r   = await res.json();
+    if (r.calibration) updateCalibStatus(r.calibration);
+  } catch (_) {}
+}
+
+function updateCalibStatus(cal) {
+  const chipWhite = $("calib-white");
+  const chipOne   = $("calib-one");
+  const hasWhite  = !!cal.white_dragon;
+  const hasOne    = !!cal.one_dot;
+
+  if (chipWhite) {
+    chipWhite.textContent = hasWhite ? "白板 ✅" : "白板 ⬜";
+    chipWhite.className   = "calib-chip" + (hasWhite ? " ok" : "");
+  }
+  if (chipOne) {
+    chipOne.textContent = hasOne ? "一饼 ✅" : "一饼 ⬜";
+    chipOne.className   = "calib-chip" + (hasOne ? " ok" : "");
+  }
+
+  const hint = $("calib-hint");
+  if (hint && hasWhite && hasOne) {
+    hint.textContent = "两张牌已标定 — 可以开始自动识别 🎯";
+  } else if (hint && !hasWhite && !hasOne) {
+    hint.textContent = "将牌放到摄像头前，点击按钮标定";
+  } else if (hint) {
+    hint.textContent = "还需标定：" + (!hasWhite ? "白板 " : "") + (!hasOne ? "一饼" : "");
+  }
+}
+
 // ===== Init =====
 syncSelectors();
 setAvatar("idle");
 setInterval(getStatus, 800);
 getStatus();
+// Poll calibration status on load
+fetchCalibStatus();

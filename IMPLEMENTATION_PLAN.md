@@ -1,5 +1,5 @@
 # Implementation Plan｜机械臂麻将 × OpenClaw
-> 最后更新：2026-02-27 晚
+> 最后更新：2026-02-28 下午
 
 ---
 
@@ -51,40 +51,75 @@
 
 | 文件 | 说明 |
 |---|---|
-| `orchestrator/state_machine.py` | Scene A/B 状态机：pick→present→recognize→TTS→throw/return |
+| `orchestrator/state_machine.py` | Scene A/B 状态机 + `auto_run_scene()`（识别自动路由）|
 | `orchestrator/contracts.py` | RunRequest / RunResult / RecognizeResult |
 | `services/api.py` | FastAPI 全路由（见下方 API 表）|
 | `services/status_store.py` | 内存状态 + 日志（最多 200 条）|
 | `services/models.py` | Pydantic 请求/响应模型 |
 | `adapters/arm/mock_arm.py` | Mock 臂（sleep 模拟，含 tap/nod/shake）|
 | `adapters/arm/base.py` | Arm 接口（pick/present/throw/return/home/estop/tap/nod/shake）|
+| `adapters/vision/histogram_vision.py` | **实装**：HSV 直方图识别（无需 ML，~5ms）white_dragon/one_dot |
 | `adapters/vision/mock_vision.py` | Mock 视觉（随机 white_dragon / one_dot）|
-| `adapters/vision/base.py` | Vision 接口（recognize_once / identify）|
+| `adapters/vision/refs/white_dragon.jpg` | 白板参考图（已标定 ✅）|
+| `adapters/vision/refs/one_dot.jpg` | 一饼参考图（已标定 ✅）|
+| `adapters/camera/cv2_camera.py` | **实装**：OpenCV webcam 截帧（CAMERA_INDEX=1）|
+| `adapters/camera/mock_camera.py` | Mock 相机（随机返回 refs 图）|
 
 **当前 API 表（全部可用）：**
 
 | 端点 | 功能 |
 |---|---|
 | `GET  /status` | 状态 + 日志 + 最近识别结果 |
-| `POST /run_scene` | 执行 Scene A 或 B（完整流程）|
+| `POST /run_scene` | 执行指定 Scene A 或 B（完整流程）|
+| `POST /auto_run` | **新** 摄像头截帧 → 识别 → 自动路由 Scene A/B |
+| `POST /capture_frame` | 接收 base64 截帧 → HistogramVision 识别 → 返回牌标签 |
+| `POST /calibrate?label=` | 标定参考图（white_dragon / one_dot）|
+| `GET  /calibrate` | 查询标定状态 |
+| `POST /voice_trigger` | 接收语音文本 → 关键词路由 → 触发动作 |
 | `POST /estop` | 紧急停止 |
-| `POST /stop` | 停止当前任务 |
 | `POST /home` | 回零位 |
 | `POST /tap` | 点三点 |
 | `POST /nod` | 点头 |
 | `POST /shake` | 摇头 |
-| `POST /capture_frame` | 接收截帧 → 视觉识别 → 返回牌标签 |
-| `POST /voice_trigger` | 接收语音文本 → 关键词路由 → 触发动作 |
+| `POST /session/start` | Brain 发起新对局 |
+| `POST /brain/input` | Brain 推送识别确认 |
+| `POST /brain/decision` | Brain 推送决策（throw/return + line_key）|
+
+**识别精度测试（2026-02-28）：**
+- white_dragon 参考图 → 识别 white_dragon，置信度 **100.00%** ✅
+- one_dot 参考图 → 识别 one_dot，置信度 **99.99%** ✅
+- 全链路 `/auto_run` 测试通过（pick→present→capture→identify→route→TTS→arm）✅
+
+**识别驱动场景路由：**
+- `white_dragon` → 自动触发 Scene A（throw_to_discard）
+- `one_dot` → 自动触发 Scene B（return_tile）
 
 ### TTS 系统
 
 | 文件 | 说明 |
 |---|---|
-| `adapters/tts/lines.py` | 台词常量 + 文字（polite/meme）+ wav 文件名 |
-| `adapters/tts/player_local.py` | 播放：有 wav → afplay；无 wav → say -v Meijia |
-| `adapters/tts/assets/polite/` | 放预录 wav 的目录 |
-| `adapters/tts/assets/meme/` | 梗版 wav 目录 |
+| `adapters/tts/lines.py` | 台词常量 + 文字（polite/meme）+ 音频文件名 |
+| `adapters/tts/player_local.py` | 播放：有音频文件 → afplay（支持 mp3/wav）；无 → say -v Meijia |
+| `adapters/tts/assets/polite/` | 放音频文件的目录 |
+| `adapters/tts/assets/meme/` | 梗版音频目录 |
 | `scripts/gen_tts.py` | edge-tts 一键生成（XiaoxiaoNeural/YunxiNeural）|
+
+**TTS 触发流程（已更新）：**
+
+| 时机 | Line Key | 音频文件 | 台词 |
+|---|---|---|---|
+| Scene A/B 开始 | `SCENE_START` | `来！开牌.mp3` | 来！开牌。|
+| Scene A 结尾（扔出）| `I_WANT_CHECK` | `我要验牌.mp3` | 我要验牌。|
+| Scene B 结尾（放回）| `OK_NO_PROBLEM` | `牌没有问题.mp3` | 牌没有问题。|
+
+**音频文件放置位置：**
+```
+software/adapters/tts/assets/polite/
+  ├── 来！开牌.mp3
+  ├── 我要验牌.mp3
+  └── 牌没有问题.mp3
+```
+未找到文件时自动 fallback → macOS say -v Meijia 中文朗读，不影响演示。
 
 ### Web 控制面板（双模式）
 
@@ -107,13 +142,31 @@
 
 ### 工程环境
 
-- Python venv：`software/.venv`（fastapi / uvicorn / pydantic / edge-tts 已装）
+- Python venv：`software/.venv`（fastapi / uvicorn / pydantic / edge-tts / opencv 4.13 已装）
 - 启动：`bash software/scripts/dev_run.sh` → `http://localhost:8000`
+- 摄像头：CAMERA_INDEX=1（720×1280，在 `software/.env` 配置）
+- Tailscale：Mac IP `100.111.27.39`，EC2 已连通 ✅
 - Git：`software` 分支，已推 HJN-Bot/robot-arm-mahjong
 
 ---
 
-## 明天待做 📋
+## 当前状态（2026-02-28）
+
+| 组件 | 状态 |
+|---|---|
+| FastAPI 服务器（:8000）| ✅ 运行中，`/` UI 可访问 |
+| HistogramVision | ✅ 白板/一饼参考已标定，识别精度 ~100% |
+| CV2Camera（index=1）| ✅ 720×1280 帧，`auto_run` 全链路通 |
+| TTS（macOS say）| ✅ 中文播报正常 |
+| MockArm | ✅ 全动作模拟 |
+| Tailscale EC2↔Mac | ✅ `100.111.27.39:8000` 已打通 |
+| Web UI `/` | ✅ 修复 404 bug（路由顺序）|
+| HttpArm | ⏳ 等 Arm 团队 URL |
+| TTS MP3 音频包 | ⏳ 放入 assets/polite/（来！开牌.mp3 / 我要验牌.mp3 / 牌没有问题.mp3）|
+
+---
+
+## 待做 📋
 
 ### 🔴 P0 — 必须完成（Hackathon 最低演示）
 

@@ -7,11 +7,13 @@ from dotenv import load_dotenv
 from software.services.models import (
     RunSceneRequest, RunSceneResponse, StatusResponse, RecognizeOut,
     CaptureFrameRequest, CaptureFrameResponse,
+    RECOGNITION_SUCCESS_THRESHOLD,
     VoiceTriggerRequest, VoiceTriggerResponse,
     BrainInputRequest, BrainDecisionRequest, SessionStartResponse,
+    AutoRunRequest, AutoRunResponse,
 )
 from software.services.status_store import StatusStore
-from software.orchestrator.contracts import RunRequest
+from software.orchestrator.contracts import RunRequest, RecognizeResult
 from software.orchestrator.state_machine import Orchestrator
 from software.adapters.arm.mock_arm import MockArm
 from software.adapters.arm.http_arm import HttpArm
@@ -44,27 +46,102 @@ except ImportError:
     status.log("vision: MockVision (opencv not installed)")
 
 tts = LocalPlayerTTS(status)
-orch = Orchestrator(arm=arm, vision=vision, tts=tts, status_store=status)
+
+# Camera: try CV2Camera, fall back to MockCamera
+try:
+    from software.adapters.camera.cv2_camera import CV2Camera
+    camera = CV2Camera(status)
+    status.log("camera: CV2Camera ready")
+except ImportError:
+    from software.adapters.camera.mock_camera import MockCamera
+    camera = MockCamera(status)
+    status.log("camera: MockCamera (opencv not installed)")
+
+orch = Orchestrator(arm=arm, vision=vision, tts=tts, status_store=status, camera=camera)
 
 @app.get("/status", response_model=StatusResponse)
 def get_status():
     rec = status.last_recognized
     rec_out = RecognizeOut(label=rec.label, confidence=rec.confidence) if rec else None
+    recognition_ok = (rec.confidence >= RECOGNITION_SUCCESS_THRESHOLD) if rec else None
+    # Read-and-clear: frontend consumes the trigger in one poll cycle
+    trigger = status.trigger_pending
+    if trigger:
+        status.trigger_pending = False
     return StatusResponse(
         busy=status.busy,
         last_scene=status.last_scene,
         last_error=status.last_error,
         recognized=rec_out,
+        recognition_ok=recognition_ok,
+        trigger_pending=trigger,
         logs=status.logs,
     )
 
 @app.post("/run_scene", response_model=RunSceneResponse)
 def run_scene(req: RunSceneRequest):
     status.last_scene = req.scene
-    rr = orch.run_scene(RunRequest(scene=req.scene, style=req.style, safe=req.safe))
+    # Use pre-identified result from frontend if provided (avoids double recognition)
+    pre = None
+    if req.recognized_label:
+        pre = RecognizeResult(label=req.recognized_label, confidence=req.recognized_conf or 0.0)
+    rr = orch.run_scene(RunRequest(scene=req.scene, style=req.style, safe=req.safe, pre_recognized=pre))
     rec = rr.recognized
     rec_out = RecognizeOut(label=rec.label, confidence=rec.confidence) if rec else None
-    return RunSceneResponse(ok=rr.ok, scene=rr.scene, duration_ms=rr.duration_ms, error_code=rr.error_code, recognized=rec_out)
+    rec_ok = (rec.confidence >= RECOGNITION_SUCCESS_THRESHOLD) if rec else None
+    return RunSceneResponse(ok=rr.ok, scene=rr.scene, duration_ms=rr.duration_ms, error_code=rr.error_code, recognized=rec_out, recognition_ok=rec_ok)
+
+@app.post("/arm/start_scene")
+def arm_start_scene(style: str = "polite", safe: bool = True):
+    """Step 1 of split flow: TTS(来！开牌) → pick → present.
+    Blocks until arm is stable with tile in front of camera.
+    Frontend should then capture a frame and call /execute_scene.
+    """
+    return orch.prepare_scene(style=style, safe=safe)
+
+
+@app.post("/execute_scene", response_model=RunSceneResponse)
+def execute_scene(req: RunSceneRequest):
+    """Step 2 of split flow: arm action + closing TTS, with pre-identified tile.
+    Expects recognized_label (and optionally recognized_conf) to determine scene.
+    """
+    if not req.recognized_label:
+        from software.services.models import RunSceneResponse as R
+        return R(ok=False, scene=req.scene, duration_ms=0, error_code="NO_RECOGNIZED_LABEL")
+    recognized = RecognizeResult(label=req.recognized_label, confidence=req.recognized_conf or 0.0)
+    rr = orch.execute_scene(scene=req.scene, style=req.style, safe=req.safe, recognized=recognized)
+    rec = rr.recognized
+    rec_out = RecognizeOut(label=rec.label, confidence=rec.confidence) if rec else None
+    rec_ok = (rec.confidence >= RECOGNITION_SUCCESS_THRESHOLD) if rec else None
+    return RunSceneResponse(ok=rr.ok, scene=rr.scene, duration_ms=rr.duration_ms, error_code=rr.error_code, recognized=rec_out, recognition_ok=rec_ok)
+
+
+@app.post("/auto_run", response_model=AutoRunResponse)
+def auto_run(req: AutoRunRequest):
+    """Capture frame -> identify -> auto-route Scene A (white_dragon) or B (one_dot)."""
+    rr = orch.auto_run_scene(style=req.style, safe=req.safe)
+    rec = rr.recognized
+    return AutoRunResponse(
+        ok=rr.ok,
+        scene=rr.scene,
+        label=rec.label if rec else None,
+        confidence=rec.confidence if rec else None,
+        duration_ms=rr.duration_ms,
+        error_code=rr.error_code,
+    )
+
+@app.post("/trigger")
+def trigger_once(style: str = "polite", safe: bool = True):
+    """外部触发一次开牌（OpenClaw / 语音 / 物理按钮 → 前端 Watch Mode 执行）。
+    设置 trigger_pending=True，前端 800ms 轮询检测到后自动执行一次 autoLoopTick。
+    """
+    if status.busy:
+        status.log("TRIGGER rejected: busy")
+        return {"ok": False, "error": "busy"}
+    status.trigger_pending = True
+    status.log(f"TRIGGER set: style={style} safe={safe}")
+    return {"ok": True, "queued": True}
+
 
 @app.post("/estop")
 def estop():
@@ -152,8 +229,9 @@ def capture_frame(req: CaptureFrameRequest):
         result = vision.identify(image_bytes)
         rec_out = RecognizeOut(label=result.label, confidence=result.confidence)
         status.last_recognized = result
-        status.log(f"CAPTURE_FRAME result: {result.label} ({result.confidence:.2f})")
-        return CaptureFrameResponse(ok=True, recognized=rec_out)
+        recognition_ok = result.confidence >= RECOGNITION_SUCCESS_THRESHOLD
+        status.log(f"CAPTURE_FRAME result: {result.label} ({result.confidence:.2f}) ok={recognition_ok}")
+        return CaptureFrameResponse(ok=True, recognized=rec_out, recognition_ok=recognition_ok)
     except Exception as e:
         status.log(f"CAPTURE_FRAME vision error: {e}")
         return CaptureFrameResponse(ok=False, error=str(e))
@@ -183,6 +261,23 @@ def calibrate_status():
     if hasattr(vision, "calibration_status"):
         return {"calibration": vision.calibration_status()}
     return {"calibration": {}}
+
+
+@app.post("/calibrate/from_camera")
+def calibrate_from_camera(label: str):
+    """直接从服务器摄像头截帧并标定 —— 无需前端上传图片。
+    用法: POST /calibrate/from_camera?label=white_dragon
+    将牌放到摄像头前再调用此接口。
+    """
+    if not hasattr(vision, "calibrate"):
+        return {"ok": False, "error": "Vision adapter does not support calibration"}
+    frame_bytes = camera.capture_bytes()
+    if not frame_bytes:
+        return {"ok": False, "error": "Camera capture failed — check camera connection"}
+    ok = vision.calibrate(label, frame_bytes)
+    cal_status = vision.calibration_status() if hasattr(vision, "calibration_status") else {}
+    status.log(f"CALIBRATE from_camera: label={label} ok={ok}")
+    return {"ok": ok, "label": label, "calibration": cal_status}
 
 
 # Simple keyword rules for voice commands

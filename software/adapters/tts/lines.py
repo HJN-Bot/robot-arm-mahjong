@@ -1,13 +1,13 @@
 # Line key constants
-LOOK_DONE = "LOOK_DONE"
-I_WANT_CHECK = "I_WANT_CHECK"
-OK_NO_PROBLEM = "OK_NO_PROBLEM"
+SCENE_START = "SCENE_START"      # plays at the very start of every scene
+I_WANT_CHECK = "I_WANT_CHECK"    # Scene A closing (throw / discard)
+OK_NO_PROBLEM = "OK_NO_PROBLEM"  # Scene B closing (return / keep)
 
-# Text content: used as fallback (macOS say) and for edge-tts pre-generation
+# Text content: fallback text when the audio file is missing (macOS say)
 LINE_TEXT: dict[str, dict[str, str]] = {
-    LOOK_DONE: {
-        "polite": "好，我看好了。",
-        "meme": "哼，给爷看完了。",
+    SCENE_START: {
+        "polite": "来！开牌。",
+        "meme": "来！开牌！",
     },
     I_WANT_CHECK: {
         "polite": "我要验牌。",
@@ -19,9 +19,10 @@ LINE_TEXT: dict[str, dict[str, str]] = {
     },
 }
 
-# Wav filename for each line key (placed under assets/<style>/<filename>)
+# Audio file for each line key (placed under assets/<style>/<filename>)
+# afplay supports both .wav and .mp3
 LINE_WAV: dict[str, str] = {
-    LOOK_DONE: "look_done.wav",
-    I_WANT_CHECK: "i_want_check.wav",
-    OK_NO_PROBLEM: "ok_no_problem.wav",
+    SCENE_START: "来！开牌.mp3",
+    I_WANT_CHECK: "我要验牌.mp3",
+    OK_NO_PROBLEM: "牌没有问题.mp3",
 }

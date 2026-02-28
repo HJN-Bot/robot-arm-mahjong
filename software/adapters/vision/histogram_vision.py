@@ -123,15 +123,21 @@ class HistogramVision(VisionAdapter):
         for label, ref_hist in self._hists.items():
             score = cv2.compareHist(ref_hist, query_hist, cv2.HISTCMP_CORREL)
             scores[label] = score
-            self.status.log(f"histogram_vision: {label} score={score:.3f}")
 
-        best_label = max(scores, key=scores.__getitem__)
-        best_score = scores[best_label]
+        sorted_labels = sorted(scores, key=scores.__getitem__, reverse=True)
+        best_label  = sorted_labels[0]
+        best_score  = scores[best_label]
+        second_best = sorted_labels[1]
+        margin = best_score - scores[second_best]
 
-        # Confidence: normalize correlation [-1,1] → [0,1]
-        confidence = float(np.clip((best_score + 1) / 2, 0.0, 1.0))
+        # Confidence = margin amplified: 0 margin → 0.5, full margin (1.0) → 1.0
+        # This makes confidence represent "how clearly it won" rather than absolute score
+        confidence = float(np.clip(0.5 + margin * 2.0, 0.0, 1.0))
 
-        self.status.log(f"histogram_vision: → {best_label} (conf={confidence:.2f})")
+        self.status.log(
+            f"histogram_vision: {best_label}={best_score:.3f}  {second_best}={scores[second_best]:.3f}"
+            f"  margin={margin:.3f}  conf={confidence:.2f}"
+        )
         return RecognizeResult(label=best_label, confidence=confidence)
 
     def recognize_once(self) -> RecognizeResult:
@@ -155,6 +161,43 @@ class HistogramVision(VisionAdapter):
             except Exception as e:
                 self.status.log(f"histogram_vision: failed to load refs: {e}")
                 self._hists = {}
+
+        # If any label is missing, try to auto-calibrate from existing ref jpg files
+        missing = [l for l in LABELS if l not in self._hists]
+        if missing and _CV2_OK:
+            self._auto_calibrate_from_refs_jpg(missing)
+
+    def _auto_calibrate_from_refs_jpg(self, labels=None):
+        """Load reference histograms from existing refs/*.jpg files.
+
+        Called on startup when histograms.pkl is absent or incomplete.
+        Each jpg was saved previously via the /calibrate endpoint.
+        """
+        if not _CV2_OK:
+            return
+        if labels is None:
+            labels = LABELS
+        calibrated = []
+        for label in labels:
+            jpg_path = REFS_DIR / f"{label}.jpg"
+            if not jpg_path.exists():
+                self.status.log(f"histogram_vision: no ref jpg for '{label}' at {jpg_path}")
+                continue
+            try:
+                img = cv2.imread(str(jpg_path))
+                if img is None:
+                    self.status.log(f"histogram_vision: failed to read {jpg_path.name}")
+                    continue
+                cropped = _center_crop(img, ratio=0.6)
+                hist = _compute_hist(cropped)
+                self._hists[label] = hist
+                calibrated.append(label)
+                self.status.log(f"histogram_vision: auto-calibrated '{label}' from {jpg_path.name} ✅")
+            except Exception as e:
+                self.status.log(f"histogram_vision: auto-calib error for '{label}': {e}")
+        if calibrated:
+            self._save_refs()
+            self.status.log(f"histogram_vision: auto-calib complete → {calibrated}")
 
     def _mock_result(self) -> RecognizeResult:
         import random

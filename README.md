@@ -62,3 +62,12 @@
 - `docs/SCENES_BRAINSTORM.md`（脑爆场景拓展）
 - `docs/NETWORKING.md`（Tailscale：EC2 ↔ Mac）
 - `docs/HARDWARE_CHECKLIST.md`（硬件/线材/桌面布置清单）
+  
+## 数据流setting
+
+Orchestrator.auto_run_scene()
+  ↓ camera.capture_bytes()  ← CV2Camera（真实）或 MockCamera（无硬件）
+  ↓ vision.identify(frame)  ← HistogramVision（需先标定）
+  ↓ label == "white_dragon" → Scene A
+    label == "one_dot"      → Scene B
+  ↓ arm.throw/return → TTS

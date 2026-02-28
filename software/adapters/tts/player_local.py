@@ -39,21 +39,22 @@ class LocalPlayerTTS:
         return os.path.join(self.assets_dir, style, fname)
 
     def _play_wav(self, path: str):
+        # run() blocks until audio finishes — ensures sequential TTS + arm flow
         if sys.platform == "darwin":
-            subprocess.Popen(["afplay", path])
+            subprocess.run(["afplay", path], check=False)
         elif shutil.which("aplay"):
-            subprocess.Popen(["aplay", "-q", path])
+            subprocess.run(["aplay", "-q", path], check=False)
         elif shutil.which("paplay"):
-            subprocess.Popen(["paplay", path])
+            subprocess.run(["paplay", path], check=False)
         else:
             self.status.log("tts: no audio player found, skipping wav playback")
 
     def _say_text(self, text: str, voice: str = "Meijia"):
         if sys.platform == "darwin":
-            subprocess.Popen(["say", "-v", voice, text])
+            subprocess.run(["say", "-v", voice, text], check=False)
         elif shutil.which("espeak"):
-            subprocess.Popen(["espeak", text])
+            subprocess.run(["espeak", text], check=False)
         elif shutil.which("espeak-ng"):
-            subprocess.Popen(["espeak-ng", text])
+            subprocess.run(["espeak-ng", text], check=False)
         else:
             self.status.log(f"tts: no speech tool available, would say: {text}")
