@@ -14,10 +14,11 @@ from software.orchestrator.contracts import RecognizeResult
 LABELS = ["white_dragon", "one_dot"]
 
 _PROMPT = (
-    "你是一个麻将牌识别系统。请识别图片中的麻将牌。\n\n"
+    "你是一个麻将牌识别系统。机械臂正在将一张麻将牌举到摄像头前，请识别牌面花色。\n\n"
     "牌只有两种可能：\n"
-    "- white_dragon：完全空白的白色方块牌（白板/Haku）\n"
-    "- one_dot：有一个圆圈的牌（一筒/一饼）\n\n"
+    "- white_dragon：纯白色的空白方块牌，牌面没有任何图案（白板/发/Haku）\n"
+    "- one_dot：牌面中央有一个绿色或彩色圆圈的牌（一筒/一饼/1-circle）\n\n"
+    "注意：图片可能有手指、机械臂或背景，请只关注牌面本身。\n\n"
     "只回复以下两个字符串之一，不要有任何其他内容：\n"
     "white_dragon\n"
     "one_dot"
@@ -52,7 +53,7 @@ class KimiVision(VisionAdapter):
                             "type": "image_url",
                             "image_url": {
                                 "url": f"data:image/jpeg;base64,{b64}",
-                                "detail": "low",   # 低分辨率推理，速度快 ~2x
+                                "detail": "auto",  # auto: 让 KIMI 自动选分辨率，准确率 > 速度
                             },
                         },
                         {"type": "text", "text": _PROMPT},
