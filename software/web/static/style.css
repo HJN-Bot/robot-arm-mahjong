@@ -288,9 +288,19 @@ pre#logs {
   align-items: center; justify-content: center; gap: 20px;
   padding: 24px;
 }
-.avatar-wrap { position: relative; display: flex; justify-content: center; }
+.avatar-wrap { position: relative; display: flex; justify-content: center; align-items: center; }
+
+/* Scene video: full frame, no circle clip */
+.scene-video {
+  display: none;
+  max-width: 500px;
+  width: 100%;
+  object-fit: cover;
+  border-radius: var(--radius);
+  background: #000;
+}
 .avatar-stage {
-  width: 220px; height: 220px;
+  width: 500px; height: 500px;
   border-radius: 50%;
   background: var(--surface2);
   border: 3px solid var(--accent);

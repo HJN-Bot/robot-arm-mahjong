@@ -55,8 +55,13 @@
   <!-- Center: Avatar -->
   <div class="play-center">
     <div class="avatar-wrap">
+      <!-- Scene videos: full frame, outside the circle clip -->
+      <video id="avatar-video-scene-a" class="scene-video" src="/static/sceneA.mp4"
+             muted playsinline preload="auto" style="display:none"></video>
+      <video id="avatar-video-scene-b" class="scene-video" src="/static/sceneB.mp4"
+             muted playsinline preload="auto" style="display:none"></video>
+      <!-- Emoji circle: shown when no video is playing -->
       <div class="avatar-stage" id="avatar-stage">
-        <!-- Drop state-based gifs: static/avatar_idle.gif, avatar_pick.gif, avatar_nod.gif, avatar_shake.gif -->
         <img id="avatar-anim" src="/static/avatar_idle.gif" onerror="this.style.display='none'" alt="" />
         <div class="avatar-emoji-big" id="avatar-emoji-big">🤖</div>
       </div>

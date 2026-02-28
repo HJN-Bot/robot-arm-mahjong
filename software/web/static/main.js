@@ -23,10 +23,9 @@ const AVATAR_STATE = {
   error:    { badge: "出错",   emoji: "😵", speech: "出了点问题...", cls: "error" },
 };
 
-// Avatar gif mapping (drop these files in static/ to activate)
+// Avatar gif mapping — omit a key to fall back to emoji for that state
 const AVATAR_GIF = {
-  idle:     "/static/avatar_idle.gif",
-  thinking: "/static/avatar_idle.gif",
+  // idle / thinking: 暂用 emoji，等高清 GIF 素材到位后再填入
   acting:   "/static/avatar_pick.gif",
   done:     "/static/avatar_nod.gif",
   error:    "/static/avatar_shake.gif",
@@ -40,10 +39,48 @@ const TILE_LABEL = {
 // ===== DOM helpers =====
 const $ = id => document.getElementById(id);
 
+// Stop all scene videos and restore the emoji circle
+function hideAllAvatarVideos() {
+  ["avatar-video-scene-a", "avatar-video-scene-b"].forEach(id => {
+    const v = $(id);
+    if (!v) return;
+    try { v.pause(); } catch (_) {}
+    v.style.display = "none";
+  });
+  // Restore emoji circle
+  const stage = $("avatar-stage");
+  if (stage) stage.style.display = "";
+}
+
+// Play the scene video for A or B — hides the circle, shows full-frame video
+function playSceneVideo(scene) {
+  const id = scene === "A" ? "avatar-video-scene-a" : "avatar-video-scene-b";
+  const v = $(id);
+  if (!v) return;
+  // Stop any other playing video (don't call hideAllAvatarVideos to avoid restoring stage)
+  ["avatar-video-scene-a", "avatar-video-scene-b"].forEach(otherId => {
+    if (otherId === id) return;
+    const other = $(otherId);
+    if (other) { try { other.pause(); } catch (_) {} other.style.display = "none"; }
+  });
+  // Hide the circle stage, show full-frame video
+  const stage = $("avatar-stage");
+  if (stage) stage.style.display = "none";
+  v.style.display = "block";
+  try { v.currentTime = 0; } catch (_) {}
+  const p = v.play();
+  if (p && typeof p.catch === "function") {
+    p.catch(err => appendLog("[VIDEO] Scene" + scene + " 播放失败: " + err.message));
+  }
+}
+
 // Update both nav-mode and play-mode avatar simultaneously
 function setAvatar(stateKey, speechOverride) {
+  // Stop any playing scene video before updating avatar state
+  hideAllAvatarVideos();
+
   const s   = AVATAR_STATE[stateKey] || AVATAR_STATE.idle;
-  const gif = AVATAR_GIF[stateKey]   || AVATAR_GIF.idle;
+  const gif = AVATAR_GIF[stateKey];   // undefined → show emoji instead
   const msg = speechOverride || s.speech;
 
   // Nav mode
@@ -56,7 +93,7 @@ function setAvatar(stateKey, speechOverride) {
   const speechNav = $("speech-text");
   if (speechNav) speechNav.textContent = msg;
   const imgNav = $("avatar-img-nav");
-  if (imgNav) imgNav.src = gif;
+  if (imgNav) { imgNav.style.display = gif ? "" : "none"; if (gif) imgNav.src = gif; }
 
   // Play mode
   const stage = $("avatar-stage");
@@ -66,7 +103,7 @@ function setAvatar(stateKey, speechOverride) {
   const speechBig = $("speech-text-big");
   if (speechBig) speechBig.textContent = msg;
   const animImg = $("avatar-anim");
-  if (animImg) animImg.src = gif;
+  if (animImg) { animImg.style.display = gif ? "" : "none"; if (gif) animImg.src = gif; }
 }
 
 function updateDot(busy, hasError) {
@@ -351,6 +388,7 @@ async function autoLoopTick() {
     const scene = label === "white_dragon" ? "A" : "B";
     appendLog(`[AUTO] Step4: Scene ${scene} — ${scene === "A" ? "扔出 → 我要验牌" : "退回 → 牌没有问题"}`);
     setAvatar("acting", scene === "A" ? "扔出！" : "退回！");
+    playSceneVideo(scene);
 
     const t0   = Date.now();
     const exec = await post("/execute_scene", {
@@ -572,6 +610,7 @@ async function runScene(scene) {
   const safe  = $("safe").value === "true";
 
   setAvatar("acting", scene === "A" ? "抓牌，扔出！" : "抓牌，退回！");
+  playSceneVideo(scene);
 
   $("qbtn-a").classList.remove("active");
   $("qbtn-b").classList.remove("active");
@@ -702,3 +741,15 @@ setInterval(getStatus, 800);
 getStatus();
 // Poll calibration status on load
 fetchCalibStatus();
+
+// Sync both scene videos to Scene A's natural aspect ratio
+(function syncVideoAspectRatio() {
+  const vA = $("avatar-video-scene-a");
+  const vB = $("avatar-video-scene-b");
+  if (!vA || !vB) return;
+  vA.addEventListener("loadedmetadata", () => {
+    const ar = vA.videoWidth + " / " + vA.videoHeight;
+    vA.style.aspectRatio = ar;
+    vB.style.aspectRatio = ar;
+  }, { once: true });
+})();
