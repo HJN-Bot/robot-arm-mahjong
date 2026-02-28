@@ -9,12 +9,13 @@ root = Path(__file__).resolve().parent
 
 app = FastAPI(title="robot-arm-mahjong web")
 
-# mount API at /
-app.mount("", api_app)
-
-# serve static
-app.mount("/static", StaticFiles(directory=str(root / "static")), name="static")
-
+# index page — must be registered before the catch-all sub-app mount
 @app.get("/", response_class=HTMLResponse)
 def index():
     return (root / "templates" / "index.html").read_text(encoding="utf-8")
+
+# serve static files
+app.mount("/static", StaticFiles(directory=str(root / "static")), name="static")
+
+# mount API sub-app last — catch-all prefix "" would shadow routes above it
+app.mount("", api_app)
