@@ -32,6 +32,7 @@ class StatusResponse(BaseModel):
     recognized: Optional[RecognizeOut] = None
     recognition_ok: Optional[bool] = None  # 置信度 >= threshold 时为 True，供 UI 显示「识别成功」
     trigger_pending: bool = False           # 外部触发开牌信号，前端读取后清零
+    activate_pending: bool = False          # 远程激活前端摄像头+AutoLoop，前端读取后清零
     logs: list[str]
 
 class CaptureFrameRequest(BaseModel):

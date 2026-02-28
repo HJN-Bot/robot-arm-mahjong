@@ -64,10 +64,11 @@ def get_status():
     rec = status.last_recognized
     rec_out = RecognizeOut(label=rec.label, confidence=rec.confidence) if rec else None
     recognition_ok = (rec.confidence >= RECOGNITION_SUCCESS_THRESHOLD) if rec else None
-    # Read-and-clear: frontend consumes the trigger in one poll cycle
-    trigger = status.trigger_pending
-    if trigger:
-        status.trigger_pending = False
+    # Read-and-clear: frontend consumes flags in one poll cycle
+    trigger  = status.trigger_pending
+    activate = status.activate_pending
+    if trigger:  status.trigger_pending  = False
+    if activate: status.activate_pending = False
     return StatusResponse(
         busy=status.busy,
         last_scene=status.last_scene,
@@ -75,6 +76,7 @@ def get_status():
         recognized=rec_out,
         recognition_ok=recognition_ok,
         trigger_pending=trigger,
+        activate_pending=activate,
         logs=status.logs,
     )
 
@@ -129,6 +131,16 @@ def auto_run(req: AutoRunRequest):
         duration_ms=rr.duration_ms,
         error_code=rr.error_code,
     )
+
+@app.post("/activate")
+def activate_frontend():
+    """远程激活前端：前端轮询检测到 activate_pending=True 后自动开摄像头 + 启动 AutoLoop。
+    由 OpenClaw 在每局开始时调用一次，替代操作员手动点击「开始自动识别」。
+    """
+    status.activate_pending = True
+    status.log("ACTIVATE set: frontend will auto-start camera + AutoLoop")
+    return {"ok": True}
+
 
 @app.post("/trigger")
 def trigger_once(style: str = "polite", safe: bool = True):

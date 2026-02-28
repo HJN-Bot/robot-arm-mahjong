@@ -576,6 +576,13 @@ async function getStatus() {
     }
     prevBusy = j.busy;
 
+    // Activate Mode: OpenClaw calls POST /activate → auto-start camera + AutoLoop
+    if (j.activate_pending) {
+      appendLog("[WATCH] 收到远程激活信号 → 自动开摄像头 + 启动 AutoLoop");
+      if (!cameraStream) await startCamera();
+      if (!autoLoopActive) toggleAutoLoop();
+    }
+
     // Watch Mode: server sets trigger_pending (via POST /trigger or OpenClaw)
     // → auto-fire one scene cycle
     if (j.trigger_pending && autoLoopActive && !autoLoopCooldown && !autoRunning) {

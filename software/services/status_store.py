@@ -8,7 +8,8 @@ class StatusStore:
     last_scene: Optional[str] = None
     last_error: Optional[str] = None
     last_recognized: Optional[RecognizeResult] = None
-    trigger_pending: bool = False   # set by POST /trigger, cleared after frontend reads it
+    trigger_pending: bool = False    # set by POST /trigger, cleared after frontend reads it
+    activate_pending: bool = False   # set by POST /activate, cleared after frontend reads it
     logs: List[str] = field(default_factory=list)
 
     def set_busy(self, v: bool):
