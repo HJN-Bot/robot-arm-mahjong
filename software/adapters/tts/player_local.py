@@ -2,7 +2,7 @@
 TTS player — cross-platform.
 
 Priority:
-  1. Pre-recorded wav: assets/<style>/<line>.wav
+  1. Pre-recorded wav/mp3: assets/<style>/<line>.wav
   2. Dynamic text fallback: espeak (Linux) or macOS `say`
   3. Silent log if no TTS tool is available
 """
@@ -42,12 +42,16 @@ class LocalPlayerTTS:
         # run() blocks until audio finishes — ensures sequential TTS + arm flow
         if sys.platform == "darwin":
             subprocess.run(["afplay", path], check=False)
+        elif shutil.which("ffplay"):
+            subprocess.run(["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", path], check=False)
+        elif shutil.which("mpv"):
+            subprocess.run(["mpv", "--no-video", path], check=False)
         elif shutil.which("aplay"):
             subprocess.run(["aplay", "-q", path], check=False)
         elif shutil.which("paplay"):
             subprocess.run(["paplay", path], check=False)
         else:
-            self.status.log("tts: no audio player found, skipping wav playback")
+            self.status.log("tts: no audio player found, skipping playback")
 
     def _say_text(self, text: str, voice: str = "Meijia"):
         if sys.platform == "darwin":
