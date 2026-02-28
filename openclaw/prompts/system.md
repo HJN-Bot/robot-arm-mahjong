@@ -69,7 +69,7 @@
 
 ## 你能调用的工具（Mac Local Hub API）
 
-通过 HTTP 调用 `http://<MAC_TAILSCALE_IP>:8000`：
+通过 HTTP 调用 `http://100.111.27.39:8000`：
 
 ```
 运行完整场景：

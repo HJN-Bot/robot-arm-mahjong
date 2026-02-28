@@ -134,13 +134,16 @@ ping <mac-ts-ip>      # 在 EC2 上执行
 
 ---
 
-## 关键参数
+## 关键参数（已确认）
 
 | 参数 | 值 |
 |---|---|
 | FastAPI 端口 | 8000 |
 | uvicorn 绑定 | 0.0.0.0（已设置）|
-| Mac Tailscale IP | 运行 `tailscale ip -4` 获取 |
+| **Mac Tailscale IP** | **100.111.27.39** ✅ |
+| **MAC_HUB_URL** | **http://100.111.27.39:8000** ✅ |
 | Guild ID | 1467170598529794317 |
 | Channel ID | 1476944737931100221 |
 | Agent ID | mahjong |
+
+> **连通性已验证** — `curl http://100.111.27.39:8000/status` 返回 200 ✅
