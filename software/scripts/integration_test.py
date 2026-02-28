@@ -58,7 +58,8 @@ def test(name: str, method: str, path: str, body: dict | None = None, checks: di
 def main():
     print(f"\nIntegration tests against {BASE}\n")
 
-    # Status
+    # Health & Status
+    test("GET /health", "GET", "/health", None, {"all_ok": True})
     test("GET /status", "GET", "/status")
 
     # Scenes

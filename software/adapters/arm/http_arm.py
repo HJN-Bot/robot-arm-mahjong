@@ -60,5 +60,5 @@ class HttpArm:
     def shake(self):
         self._post("/shake")
 
-    def status(self) -> dict:
+    def get_status(self) -> dict:
         return self._get("/status")

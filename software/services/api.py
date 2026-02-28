@@ -100,6 +100,34 @@ def shake():
     return {"ok": True}
 
 
+@app.get("/health")
+def health():
+    """Check connectivity to all subsystems."""
+    checks = {"api": True, "arm_adapter": arm_adapter}
+
+    # Arm: try to reach the arm service (only meaningful in http mode)
+    if arm_adapter == "http":
+        try:
+            arm.get_status()
+            checks["arm_reachable"] = True
+        except Exception as e:
+            checks["arm_reachable"] = False
+            checks["arm_error"] = str(e)
+    else:
+        checks["arm_reachable"] = True  # mock is always "reachable"
+
+    # Vision
+    checks["vision_adapter"] = type(vision).__name__
+
+    # TTS: check if voice assets exist
+    import os
+    assets_path = os.path.join(os.path.dirname(__file__), "..", "adapters", "tts", "assets", "polite")
+    checks["tts_assets"] = os.path.isdir(assets_path) and len(os.listdir(assets_path)) > 0
+
+    checks["all_ok"] = checks["arm_reachable"] and checks["api"]
+    return checks
+
+
 @app.post("/capture_frame", response_model=CaptureFrameResponse)
 def capture_frame(req: CaptureFrameRequest):
     try:
