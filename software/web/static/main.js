@@ -6,11 +6,9 @@ let recognition = null;
 let cameraStream = null;
 
 // Auto-recognition loop
-const AUTO_CONF_THRESHOLD = 0.65;   // min confidence to trigger scene
+const AUTO_CONF_THRESHOLD = 0.0;    // 不设置置信度门槛，识别到什么就输出什么
 const AUTO_INTERVAL_MS    = 1500;   // capture every 1.5s
 const AUTO_COOLDOWN_MS    = 7000;   // pause 7s after triggering scene
-// 仅当置信度 >= 此阈值时在 UI 显示「识别成功」✅，否则显示「置信度不足」
-const CONF_DISPLAY_SUCCESS = 0.65;
 let autoLoopActive   = false;
 let autoLoopCooldown = false;
 let autoLoopTimer    = null;
@@ -86,19 +84,11 @@ function updateDot(busy, hasError) {
   }
 }
 
-/**
- * 根据后端识别结果与置信度渲染；仅当置信度 >= CONF_DISPLAY_SUCCESS 时显示「识别成功」✅，
- * 否则显示「置信度不足」，与后端状态一致。
- * @param {Object} rec - { label, confidence }
- * @param {{ success?: boolean }} opts - 若传 success: false 则强制显示为未成功（不跟置信度）
- */
+/** 有识别结果就展示，不再做置信度门槛判断 */
 function renderRecognized(rec, opts = {}) {
   if (!rec) return;
-  const tileName = TILE_LABEL[rec.label] || rec.label;
-  const isSuccess = opts.success !== undefined
-    ? opts.success
-    : rec.confidence >= CONF_DISPLAY_SUCCESS;
-  const displayText = isSuccess ? tileName + " ✅ 识别成功" : tileName + " ⚠️ 置信度不足";
+  const tileName    = TILE_LABEL[rec.label] || rec.label;
+  const displayText = tileName + " ✅ 识别成功";
   const conf        = "置信度 " + Math.round(rec.confidence * 100) + "%";
 
   // Nav mode
@@ -240,11 +230,10 @@ async function captureAndSend() {
   try {
     const r = await post("/capture_frame", { image: base64 });
     if (r.ok && r.recognized) {
-      const ok = r.recognition_ok !== undefined ? r.recognition_ok : (r.recognized.confidence >= CONF_DISPLAY_SUCCESS);
-      renderRecognized(r.recognized, { success: ok });
+      renderRecognized(r.recognized);
       const lbl = TILE_LABEL[r.recognized.label] || r.recognized.label;
-      setAvatar("done", ok ? `识别成功：${lbl}` : `置信度不足：${lbl}`);
-      appendLog(`[CAM] 识别: ${r.recognized.label} (${Math.round(r.recognized.confidence * 100)}%) ${ok ? "✅" : "⚠️"}`);
+      setAvatar("done", `识别到：${lbl}`);
+      appendLog(`[CAM] 识别: ${r.recognized.label} (${Math.round(r.recognized.confidence * 100)}%)`);
     } else {
       clearRecognized();
       setAvatar("error", "识别失败");
@@ -337,7 +326,7 @@ async function autoLoopTick() {
       appendLog(`[AUTO] Step3 f${i+1}: ${r.recognized.label} conf=${Math.round(conf*100)}%`);
       if (!bestResult || conf > bestResult.recognized.confidence) {
         bestResult = r;
-        renderRecognized(r.recognized, { success: conf >= AUTO_CONF_THRESHOLD });
+        renderRecognized(r.recognized);
       }
       if (conf >= 0.85) break; // good enough, stop early
     }
@@ -356,9 +345,7 @@ async function autoLoopTick() {
     }
     const { label, confidence } = bestResult.recognized;
     const confPct = Math.round(confidence * 100);
-    const recOk = confidence >= AUTO_CONF_THRESHOLD;
-    renderRecognized(bestResult.recognized, { success: recOk });
-    appendLog(`[AUTO] Step3: 最终 → ${label} conf=${confPct}% ${recOk ? "✅" : "⚠️"}`);
+    appendLog(`[AUTO] Step3: 最终 → ${label} conf=${confPct}%`);
 
     // ── Step 4: Determine scene + execute arm action ──────────────────────
     const scene = label === "white_dragon" ? "A" : "B";
@@ -546,11 +533,8 @@ async function getStatus() {
           setTimeout(() => setAvatar("idle"), 3000);
         }
       }
-      // 与后端状态同步：有结果则用后端 recognition_ok（或置信度）显示成功/不足，无结果则清空
-      if (j.recognized) {
-        const success = j.recognition_ok !== undefined ? j.recognition_ok : (j.recognized.confidence >= CONF_DISPLAY_SUCCESS);
-        renderRecognized(j.recognized, { success });
-      } else clearRecognized();
+      if (j.recognized) renderRecognized(j.recognized);
+      else clearRecognized();
     }
     prevBusy = j.busy;
 
@@ -599,10 +583,7 @@ async function runScene(scene) {
 
   $(`qbtn-${scene.toLowerCase()}`).classList.remove("active");
 
-  if (r.recognized) {
-    const ok = r.ok && (r.recognition_ok !== undefined ? r.recognition_ok : (r.recognized.confidence >= CONF_DISPLAY_SUCCESS));
-    renderRecognized(r.recognized, { success: ok });
-  }
+  if (r.recognized) renderRecognized(r.recognized);
 
   history.push({
     scene, ok: r.ok, ms,

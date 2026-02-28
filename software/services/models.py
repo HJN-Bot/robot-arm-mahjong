@@ -23,7 +23,7 @@ class RunSceneResponse(BaseModel):
     recognition_ok: Optional[bool] = None  # 与 Status/CaptureFrame 一致
 
 # 与前端 CONF_DISPLAY_SUCCESS 一致，仅当置信度 >= 此值视为「识别成功」
-RECOGNITION_SUCCESS_THRESHOLD = 0.65
+RECOGNITION_SUCCESS_THRESHOLD = 0.0   # 有识别结果即视为成功，不设置置信度门槛
 
 class StatusResponse(BaseModel):
     busy: bool
