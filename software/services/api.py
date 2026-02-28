@@ -3,6 +3,7 @@ import os
 import re
 import uuid
 from fastapi import FastAPI
+from dotenv import load_dotenv
 from software.services.models import (
     RunSceneRequest, RunSceneResponse, StatusResponse, RecognizeOut,
     CaptureFrameRequest, CaptureFrameResponse,
@@ -14,8 +15,9 @@ from software.orchestrator.contracts import RunRequest
 from software.orchestrator.state_machine import Orchestrator
 from software.adapters.arm.mock_arm import MockArm
 from software.adapters.arm.http_arm import HttpArm
-from software.adapters.vision.mock_vision import MockVision
 from software.adapters.tts.player_local import LocalPlayerTTS
+
+load_dotenv(dotenv_path="software/.env", override=False)
 
 app = FastAPI(title="robot-arm-mahjong software")
 
@@ -31,7 +33,16 @@ else:
     arm = MockArm(status)
     status.log("arm adapter: mock")
 
-vision = MockVision(status)
+# Vision: use HistogramVision if opencv is available, else fall back to Mock
+try:
+    from software.adapters.vision.histogram_vision import HistogramVision
+    vision = HistogramVision(status)
+    status.log("vision: HistogramVision ready")
+except ImportError:
+    from software.adapters.vision.mock_vision import MockVision
+    vision = MockVision(status)
+    status.log("vision: MockVision (opencv not installed)")
+
 tts = LocalPlayerTTS(status)
 orch = Orchestrator(arm=arm, vision=vision, tts=tts, status_store=status)
 
@@ -146,6 +157,32 @@ def capture_frame(req: CaptureFrameRequest):
     except Exception as e:
         status.log(f"CAPTURE_FRAME vision error: {e}")
         return CaptureFrameResponse(ok=False, error=str(e))
+
+
+@app.post("/calibrate")
+def calibrate(req: CaptureFrameRequest, label: str):
+    """保存参考帧到 histogram_vision（标定用）。
+    label 参数: white_dragon 或 one_dot
+    用法: POST /calibrate?label=white_dragon  body: { image: base64 }
+    """
+    if not hasattr(vision, "calibrate"):
+        return {"ok": False, "error": "Vision adapter does not support calibration"}
+    try:
+        image_bytes = base64.b64decode(req.image)
+    except Exception:
+        return {"ok": False, "error": "base64 decode failed"}
+
+    ok = vision.calibrate(label, image_bytes)
+    cal_status = vision.calibration_status() if hasattr(vision, "calibration_status") else {}
+    return {"ok": ok, "label": label, "calibration": cal_status}
+
+
+@app.get("/calibrate")
+def calibrate_status():
+    """查询标定状态（哪些 label 已有参考图）。"""
+    if hasattr(vision, "calibration_status"):
+        return {"calibration": vision.calibration_status()}
+    return {"calibration": {}}
 
 
 # Simple keyword rules for voice commands
