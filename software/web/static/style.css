@@ -354,6 +354,8 @@ pre#logs {
   cursor: pointer; transition: all .2s; user-select: none; gap: 2px;
 }
 .qbtn:active { transform: scale(.96); }
+.qbtn--auto { border-color: rgba(102,209,255,.4); }
+.qbtn--auto:hover { border-color: #66d1ff; background: rgba(102,209,255,.15); }
 .qbtn--a { border-color: rgba(255,209,102,.4); }
 .qbtn--a:hover { border-color: var(--accent); background: rgba(255,209,102,.1); }
 .qbtn--b { border-color: rgba(255,209,102,.4); }

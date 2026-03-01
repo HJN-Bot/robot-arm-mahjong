@@ -648,6 +648,40 @@ async function runScene(scene) {
   await getStatus();
 }
 
+async function runAutoScene() {
+  const style = $("style").value;
+  const safe  = $("safe").value === "true";
+
+  setAvatar("acting", "自动对局中...");
+  $("qbtn-auto").classList.add("active");
+
+  const t0 = Date.now();
+  const r  = await post("/auto_run", { style, safe });
+  const ms = Date.now() - t0;
+
+  $("qbtn-auto").classList.remove("active");
+
+  const scene = r.scene || "A";
+  const recognized = (r.label) ? { label: r.label, confidence: r.confidence } : null;
+  if (recognized) renderRecognized(recognized);
+
+  history.push({
+    scene, ok: r.ok, ms,
+    label: r.label || null,
+    conf:  r.confidence || 0,
+    style,
+  });
+  renderStats();
+  renderHistory();
+
+  setAvatar(r.ok ? "done" : "error",
+    r.ok
+      ? `识别: ${r.label || '?'} → Scene ${scene}`
+      : "哎，失败了...");
+  setTimeout(() => setAvatar("idle"), 3000);
+  await getStatus();
+}
+
 async function runExtra(action) {
   const speechMap = { tap: "点三点！", nod: "点头 ✅", shake: "摇头 ❌" };
   setAvatar("acting", speechMap[action]);

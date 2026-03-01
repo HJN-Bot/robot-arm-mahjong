@@ -81,6 +81,11 @@
   <!-- Right: Controls -->
   <div class="play-controls">
     <div class="quick-btns">
+      <button class="qbtn qbtn--auto" id="qbtn-auto" onclick="runAutoScene()">
+        <span class="qbtn-icon">🤖</span>
+        <span class="qbtn-label">自动对局</span>
+        <span class="qbtn-sub">Auto Run</span>
+      </button>
       <button class="qbtn qbtn--a" id="qbtn-a" onclick="runScene('A')">
         <span class="qbtn-icon">🃏</span>
         <span class="qbtn-label">验牌 → 扔出</span>
@@ -170,6 +175,11 @@
     <section class="section">
       <h2 class="section-title">🎯 技能 Skills</h2>
       <div class="skill-grid">
+        <div class="skill-card" onclick="switchMode('play');runAutoScene()">
+          <div class="skill-icon">🤖</div>
+          <div class="skill-name">Auto Run</div>
+          <div class="skill-desc">抓牌 → 识别 → 自动决策</div>
+        </div>
         <div class="skill-card" onclick="switchMode('play');runScene('A')">
           <div class="skill-icon">🃏</div>
           <div class="skill-name">Scene A</div>
