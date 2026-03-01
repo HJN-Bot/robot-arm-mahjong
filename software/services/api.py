@@ -36,10 +36,14 @@ else:
     status.log("arm adapter: mock")
 
 # Vision adapter: controlled by VISION_ADAPTER env var
-# Values: kimi | claude | histogram | mock  (default: kimi)
+# Values: kimi | claude | clip | histogram | mock  (default: kimi)
 _vision_adapter = os.getenv("VISION_ADAPTER", "kimi").lower()
 
-if _vision_adapter == "kimi":
+if _vision_adapter == "clip":
+    from software.adapters.vision.clip_vision import ClipVision
+    vision = ClipVision(status)
+
+elif _vision_adapter == "kimi":
     from software.adapters.vision.kimi_vision import KimiVision
     vision = KimiVision(status)
     if not vision._ready:
