@@ -22,6 +22,19 @@ passed = 0
 failed = 0
 
 
+def wait_idle(max_wait: float = 10.0):
+    """Poll /status until busy=false, so the next test doesn't hit a busy lock."""
+    deadline = time.time() + max_wait
+    while time.time() < deadline:
+        try:
+            r = httpx.get(f"{BASE}/status", timeout=5)
+            if not r.json().get("busy", True):
+                return
+        except Exception:
+            pass
+        time.sleep(0.5)
+
+
 def test(name: str, method: str, path: str, body: dict | None = None, checks: dict | None = None):
     global passed, failed
     url = f"{BASE}{path}"
@@ -60,7 +73,7 @@ def main():
     print(f"\nIntegration tests against {BASE}\n")
     print("--- Health & Status ---")
     test("GET /health", "GET", "/health", None, {"all_ok": True})
-    test("GET /status", "GET", "/status")
+    test("GET /status", "GET", "/status", None, {"busy": False})
 
     print("\n--- Scenes ---")
     test("POST /run_scene A", "POST", "/run_scene",
@@ -90,8 +103,11 @@ def main():
          {"style": "polite", "safe": True},
          {"ok": True})
 
-    print("\n--- Trigger ---")
-    time.sleep(1)  # wait for busy to clear from auto_run
+    print("\n--- Activate & Trigger ---")
+    test("POST /activate", "POST", "/activate",
+         {}, {"ok": True})
+
+    wait_idle()
     test("POST /trigger", "POST", "/trigger?style=polite&safe=true",
          None, {"ok": True})
 
@@ -108,6 +124,9 @@ def main():
          {"ok": True})
 
     test("GET /calibrate (status)", "GET", "/calibrate")
+
+    # quick_identify uses server-side camera; in mock mode capture fails (ok=false is expected)
+    test("POST /quick_identify", "POST", "/quick_identify", None)
 
     print("\n--- Voice ---")
     test("POST /voice_trigger (scene A)", "POST", "/voice_trigger",
@@ -131,10 +150,12 @@ def main():
          {"session_id": "test", "label": "white_dragon", "confidence": 0.92},
          {"ok": True})
 
+    wait_idle()  # voice_trigger (scene A) runs a full scene — wait for it
     test("POST /brain/decision (throw)", "POST", "/brain/decision",
          {"session_id": "test", "action": "throw", "line_key": "LOOK_DONE", "ui_text": "throwing"},
          {"ok": True, "action": "throw"})
 
+    wait_idle()
     test("POST /brain/decision (return)", "POST", "/brain/decision",
          {"session_id": "test", "action": "return", "line_key": "OK_NO_PROBLEM", "ui_text": "returning"},
          {"ok": True, "action": "return"})
